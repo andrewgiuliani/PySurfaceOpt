@@ -54,7 +54,6 @@ MIN_DIST_WEIGHT = 1e-3
 ALEN_WEIGHT = 1e-7
 
 IOTAS_TARGET_WEIGHT = 1.
-MAJOR_RADIUS_WEIGHT = 1.
 TF_WEIGHT = 1.
 MR_WEIGHT = 1.
 
@@ -62,7 +61,7 @@ MR_WEIGHT = 1.
 
 problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, coils,
                              iotas_target=iotas_target, major_radii_targets=mr_target, toroidal_flux_targets=tf_target, 
-                             iotas_target_weight=IOTAS_TARGET_WEIGHT, mr_weight=MAJOR_RADIUS_WEIGHT, tf_weight=TF_WEIGHT,
+                             iotas_target_weight=IOTAS_TARGET_WEIGHT, mr_weight=MR_WEIGHT, tf_weight=TF_WEIGHT,
                              minimum_distance=MIN_DIST, kappa_max=KAPPA_MAX, lengthbound_threshold=LENGTHBOUND,
                              distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
                              outdir_append="_runID=-1")

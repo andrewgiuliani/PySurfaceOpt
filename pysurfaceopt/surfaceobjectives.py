@@ -214,6 +214,8 @@ class ToroidalFlux(Optimizable):
     """
 
     def __init__(self, in_boozer_surface, biotsavart, idx=0):
+        Optimizable.__init__(self, depends_on=[in_boozer_surface, biotsavart])
+        
         in_surface = in_boozer_surface.surface
         phis = np.linspace(0, 1/in_surface.nfp, sDIM, endpoint=False)
         thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)

@@ -40,15 +40,17 @@ class SurfaceProblem(Optimizable):
                                           "G": boozer_surface.res["G"]} for boozer_surface in self.boozer_surface_list]
         
         self.iter = 0
-        self.J_distance = MinimumDistance(self._all_curves, minimum_distance)
-        self.J_major_radii = [MajorRadius(booz_surf) for booz_surf in self.boozer_surface_list]
         self.bs_ratio_list = [BiotSavart(coils) for s in self.boozer_surface_list]
         self.bs_tf_list = [BiotSavart(coils) for s in self.boozer_surface_list]
         self.bs_boozer_residual_list = [BiotSavart(coils) for s in self.boozer_surface_list]
+        
+        self.J_coil_lengths    = [CurveLength(coil) for coil in self._base_curves]
+        self.J_distance = MinimumDistance(self._all_curves, minimum_distance)
+        self.J_major_radii = [MajorRadius(booz_surf) for booz_surf in self.boozer_surface_list]
+
         self.J_toroidal_flux = [ToroidalFlux(boozer_surface, bs_tf) for boozer_surface, bs_tf in zip(self.boozer_surface_list, self.bs_tf_list)]
         constraint_weights = [ booz_surf.res['constraint_weight'] if 'constraint_weight' in booz_surf.res else 0. for booz_surf in self.boozer_surface_list]
         self.J_boozer_residual = [BoozerResidual(boozer_surface, bs_boozer_residual, cw) for boozer_surface, bs_boozer_residual, cw in zip(boozer_surface_list, self.bs_boozer_residual_list, constraint_weights)]
-        self.J_coil_lengths    = [CurveLength(coil) for coil in self._base_curves]
         
         self.msc_weight = msc_weight
         self.distance_weight = distance_weight
@@ -94,26 +96,31 @@ class SurfaceProblem(Optimizable):
             self.iotas_lb = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.iotas_lb = iotas_lb
+            dependencies+=self.J_iotas
 
         if iotas_ub is None:
             self.iotas_ub = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.iotas_ub = iotas_ub
+            dependencies+=self.J_iotas
 
         if iotas_avg_target is None:
             self.iotas_avg_target = None
         else:
             self.iotas_avg_target = iotas_avg_target
+            dependencies+=self.J_iotas
 
         if major_radii_targets is None:
             self.major_radii_targets = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.major_radii_targets = major_radii_targets
+            dependencies+=self.J_major_radii
         
         if toroidal_flux_targets is None:
             self.toroidal_flux_targets = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.toroidal_flux_targets = toroidal_flux_targets
+            dependencies+=self.J_toroidal_flux
         
         self.current_fak = 1./(4 * np.pi * 1e-7)
         Optimizable.__init__(self, depends_on=dependencies)
@@ -152,7 +159,6 @@ class SurfaceProblem(Optimizable):
             out_targets.write("msc weight " + str(self.msc_weight)+"\n")
             out_targets.write("alen weight " + str(self.arclength_weight)+"\n")
             out_targets.write("distance weight " + str(self.distance_weight)+"\n")
-
             out_targets.close()
     
     def update(self, verbose=False):
@@ -240,22 +246,27 @@ class SurfaceProblem(Optimizable):
         if self.lengthbound_threshold is not None: 
             res_dict[ 'lengthbound'] = self.lengthbound_weight * 0.5 * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold])**2
             dres_dict['lengthbound'] = self.lengthbound_weight * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold]) * sum(J3.dJ(partials=True)(self) for J3 in J_coil_lengths)
+        
         if self.mr_weight is not None:
             mr  = 0.5 * self.mr_weight * sum(  (J3.J() - l)**2 if l is not None else 0. for (J3, l) in zip(J_major_radii, self.major_radii_targets))
-            dmr = self.mr_weight * sum([ (J3.J()-l) * J3.dJ(partials=True)(self) if l is not None else 0. for (J3, l) in zip(J_major_radii, self.major_radii_targets)] ) * self.current_fak
+            dmr = self.mr_weight * sum([ (J3.J()-l) * J3.dJ(partials=True)(self) if l is not None else 0. for (J3, l) in zip(J_major_radii, self.major_radii_targets)] ) 
             mr_list  = MPI.COMM_WORLD.allgather(mr)
             dmr_list = MPI.COMM_WORLD.allgather(dmr)
             res_dict[ 'mr'] = sum(mr_list)
             dres_dict['mr'] = sum(dmr_list)
+        
         if self.distance_weight is not None:
             res_dict[ 'distance']= self.distance_weight * J_distance.J()
             dres_dict['distance']= self.distance_weight * J_distance.dJ(partials=True)(self)
+        
         if self.arclength_weight is not None:
             res_dict[ 'alen']= self.arclength_weight * sum([J7.J() for J7 in J_arclength])
             dres_dict['alen']= self.arclength_weight * sum([J7.dJ(partials=True)(self) for J7 in J_arclength])
+        
         if self.curvature_weight is not None:
             res_dict[ 'curvature'] = self.curvature_weight * sum([J8.J() for J8 in J_curvature])
             dres_dict['curvature'] = self.curvature_weight * sum([J8.dJ(partials=True)(self) for J8 in J_curvature])
+        
         if self.residual_weight is not None:
             residual =  sum([res_weight*res.J() if res_weight is not None else 0. for res_weight, res in zip(self.residual_weight, self.J_boozer_residual)] )
             dresidual=  sum([res_weight*res.dJ(partial=True)(self) if res_weight is not None else 0. for res_weight, res in zip(self.residual_weight, self.J_boozer_residual)] )
@@ -263,9 +274,11 @@ class SurfaceProblem(Optimizable):
             dresidual_list = MPI.COMM_WORLD.allgather(dresidual)
             res_dict[ 'residual'] = sum(residual_list)
             dres_dict['residual'] = sum(dresidual_list)
+        
         if self.msc_weight is not None:
             res_dict[ 'msc']= self.msc_weight * sum([J13.J() for J13 in J_msc])
             dres_dict['msc']= self.msc_weight * sum([J13.dJ(partials=True)(self) for J13 in J_msc])
+        
         if self.iotas_avg_target is not None:
             iotas_list = [r for rlist in MPI.COMM_WORLD.allgather([Jtemp.J() for Jtemp in J_iotas]) for r in rlist]
             diotas_list = [r for rlist in MPI.COMM_WORLD.allgather([Jtemp.dJ(partials=True)(self) for Jtemp in J_iotas]) for r in rlist]
@@ -273,6 +286,22 @@ class SurfaceProblem(Optimizable):
             diotas_avg = sum(diotas_list)/self.Nsurfaces
             res_dict['iotas'] = 0.5 * self.iotas_avg_weight * ( self.iotas_avg - self.iotas_avg_target)**2
             dres_dict['iotas'] =      self.iotas_avg_weight * ( self.iotas_avg - self.iotas_avg_target) * diotas_avg
+        
+        if self.iotas_bound_weight is not None:
+            iotas_lb = self.iotas_bound_weight * sum([0.5 * max([iotas_lb-Jtemp.J(),0])**2 if iotas_lb is not None else 0. for Jtemp, iotas_lb in zip(self.J_iotas, self.iotas_lb)])
+            diotas_lb= self.iotas_bound_weight * sum([     -max([iotas_lb-Jtemp.J() ,0]) * Jtemp.dJ(partials=True)(self) for Jtemp, iotas_lb in zip(self.J_iotas, self.iotas_lb)])
+            iotas_lb_list = MPI.COMM_WORLD.allgather(iotas_lb)
+            diotas_lb_list= MPI.COMM_WORLD.allgather(diotas_lb)
+            res_dict['iotas_lb'] = sum(iotas_lb_list)
+            dres_dict['iotas_lb'] = sum(diotas_lb_list)
+        
+        if self.iotas_bound_weight is not None:
+            iotas_ub = self.iotas_bound_weight * sum([0.5 * max([Jtemp.J()-iotas_ub,0])**2 if iotas_ub is not None else 0. for Jtemp, iotas_ub in zip(self.J_iotas, self.iotas_ub)])
+            diotas_ub= self.iotas_bound_weight * sum([ max([Jtemp.J()-iotas_ub ,0]) * Jtemp.dJ(partials=True)(self) for Jtemp, iotas_ub in zip(self.J_iotas, self.iotas_ub)])
+            iotas_ub_list = MPI.COMM_WORLD.allgather(iotas_ub)
+            diotas_ub_list= MPI.COMM_WORLD.allgather(diotas_ub)
+            res_dict['iotas_ub'] = sum(iotas_ub_list)
+            dres_dict['iotas_ub'] = sum(diotas_ub_list)
 
         self.res =  sum(res_dict.values())
         self.dres = sum(dres_dict.values())
