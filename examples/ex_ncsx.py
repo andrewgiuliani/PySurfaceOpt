@@ -76,8 +76,6 @@ problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, co
 coeffs = problem.x.copy()
 problem.callback(coeffs)
 
-import ipdb;ipdb.set_trace()
-
 def J_scipy(dofs,*args):
     problem.x = dofs
     J = problem.res

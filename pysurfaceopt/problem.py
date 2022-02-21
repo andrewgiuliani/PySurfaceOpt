@@ -83,7 +83,7 @@ class SurfaceProblem(Optimizable):
         else:
             self.residual_weight=residual_weight
             dependencies+=self.J_boozer_residual
-
+        
         if lengthbound_threshold is None:
             self.lengthbound_threshold = None
         else:
@@ -126,7 +126,6 @@ class SurfaceProblem(Optimizable):
             self.toroidal_flux_targets = toroidal_flux_targets
             dependencies+=self.J_toroidal_flux
         
-        self.current_fak = 1./(4 * np.pi * 1e-7)
         Optimizable.__init__(self, depends_on=dependencies)
         self.update()
         self.x_reference = self.x
@@ -246,8 +245,12 @@ class SurfaceProblem(Optimizable):
             diotas_list = MPI.COMM_WORLD.allgather(diotas_penalty)
             res_dict[ 'iotas'] = sum(iotas_list)
             dres_dict['iotas'] = sum(diotas_list)
+        
+        if self.tf_weight is not None:
+            res_dict[ 'toroidal flux'] =  0.5 * self.tf_weight * sum( [ (J6.J() - l)**2 if l is not None else 0. for (J6, l) in zip(J_toroidal_flux, self.toroidal_flux_targets)])
+            dres_dict['toroidal flux'] =        self.tf_weight * sum( [ (J6.J() - l)*J6.dJ(partials=True)(self) if l is not None else 0. for (J6, l) in zip(J_toroidal_flux, self.toroidal_flux_targets)])
 
-        if self.lengthbound_threshold is not None: 
+        if self.lengthbound_weight is not None: 
             res_dict[ 'lengthbound'] = self.lengthbound_weight * 0.5 * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold])**2
             dres_dict['lengthbound'] = self.lengthbound_weight * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold]) * sum(J3.dJ(partials=True)(self) for J3 in J_coil_lengths)
         
@@ -367,6 +370,7 @@ class SurfaceProblem(Optimizable):
         areas = [abs(Area(bs.surface).J()) for bs in self.boozer_surface_list]
         aspect_ratios = [Aspect_ratio(bs.surface).J() for bs in self.boozer_surface_list]
         mR = [R.J() for R in self.J_major_radii]
+        tf = [tflux.J() for tflux in self.J_toroidal_flux]
         boozerRes = [Jbr.J() for Jbr in self.J_boozer_residual]
 
         
@@ -394,12 +398,15 @@ class SurfaceProblem(Optimizable):
         other_char['major radii'] = ' '.join('%.6e'%mr for mr  in [i for d in MPI.COMM_WORLD.allgather(mR) for i in d])
         if self.mr_weight is not None:
             other_char["major radii targets"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.major_radii_targets) for i in d])
-        
+        other_char['toroidal flux'] = ' '.join('%.6e'%mr for mr  in [i for d in MPI.COMM_WORLD.allgather(tf) for i in d])
+        if self.tf_weight is not None:
+            other_char["toroidal flux targets"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.toroidal_flux_targets) for i in d])
+
         if self.rank == 0:
             print(f"Iteration {self.iter}")
             print(f"Objective value:             {self.res:.6e}")
             print(f"Gradient:                    {np.linalg.norm(self.dres, ord=np.inf):.6e}")
-            console = Console(width=150)
+            console = Console(width=200)
             table1 = Table(expand=True)
             for k in self.res_dict.keys():
                 table1.add_column(k, style="dim")

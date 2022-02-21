@@ -275,32 +275,24 @@ class ToroidalFlux(Optimizable):
 
         self.biotsavart = biotsavart
         self.idx = idx
-        self.clear_cached_properties()
+        self.recompute_bell()
 
-    def clear_cached_properties(self):
-        self._J = None
-        self._dJ_by_dcoefficients = None
-        self._dJ_by_dcoilcurrents = None
-
-    def J(self, compute_derivatives=0):
-        assert compute_derivatives >= 0
+    def J(self):
         if self._J is None:
-            self.compute(compute_derivatives=compute_derivatives)
+            self.compute()
         return self._J
+    
+    @derivative_dec
+    def dJ(self):
+        if self._dJ is None:
+            self.compute()
+        return self._dJ
 
-    def dJ_by_dcoefficients(self, compute_derivatives=1):
-        assert compute_derivatives >= 1 and self.boozer_surface is not None
-        if self._dJ_by_dcoefficients is None:
-            self.compute(compute_derivatives=compute_derivatives)
-        return self._dJ_by_dcoefficients
+    def recompute_bell(self, parent=None):
+        self._J = None
+        self._dJ = None
 
-    def dJ_by_dcoilcurrents(self, compute_derivatives=1):
-        assert compute_derivatives >= 1 and self.boozer_surface is not None
-        if self._dJ_by_dcoilcurrents is None:
-            self.compute(compute_derivatives=compute_derivatives)
-        return self._dJ_by_dcoilcurrents
-
-    def compute(self, compute_derivatives=0):
+    def compute(self):
         in_surface = self.in_boozer_surface.surface
 
         self.surface.set_dofs(in_surface.get_dofs())
@@ -312,29 +304,23 @@ class ToroidalFlux(Optimizable):
         A = self.biotsavart.A()
         self._J = np.sum(A * xtheta)/ntheta
         
-        if compute_derivatives > 0:
-            booz_surf = self.boozer_surface
-            iota = booz_surf.res['iota']
-            G = booz_surf.res['G']
-            P, L, U = booz_surf.res['PLU']
-            dconstraint_dcoils_vjp = boozer_surface_dexactresidual_dcoils_dcurrents_vjp if booz_surf.res['type'] == 'exact' else boozer_surface_dlsqgrad_dcoils_vjp
-            
-            dJ_by_dA = self.dJ_by_dA()
-            dJ_by_dcoils = self.biotsavart.A_vjp(dJ_by_dA)
-            
-            # tack on dJ_diota = dJ_dG = 0 to the end of dJ_ds
-            dJ_ds = np.zeros(L.shape[0])
-            dj_ds = self.dJ_by_dsurfacecoefficients()
-            dJ_ds[:dj_ds.size] = dj_ds
-            adj = forward_backward(P, L, U, dJ_ds)
+        booz_surf = self.in_boozer_surface
+        iota = booz_surf.res['iota']
+        G = booz_surf.res['G']
+        P, L, U = booz_surf.res['PLU']
+        dconstraint_dcoils_vjp = boozer_surface_dexactresidual_dcoils_dcurrents_vjp if booz_surf.res['type'] == 'exact' else boozer_surface_dlsqgrad_dcoils_vjp
         
-            adj_times_dg_dcoil, adj_times_dg_dcurr = dconstraint_dcoils_vjp(adj, booz_surf, iota, G, booz_surf.bs)
-            self._dJ_by_dcoefficients = [dj_dc - adj_dg_dc for dj_dc, adj_dg_dc in zip(dJ_by_dcoils, adj_times_dg_dcoil)]
-
-            dA_by_dcoilcurrents = self.biotsavart.dA_by_dcoilcurrents()
-            dJ_dcurrents = [np.sum(dJ_by_dA*dA_dcurr) for dA_dcurr in dA_by_dcoilcurrents]
-           
-            self._dJ_by_dcoilcurrents = [dj_dc - adj_dg_dc for dj_dc, adj_dg_dc in zip(dJ_dcurrents, adj_times_dg_dcurr)]
+        dJ_by_dA = self.dJ_by_dA()
+        dJ_by_dcoils = self.biotsavart.A_vjp(dJ_by_dA)
+        
+        # tack on dJ_diota = dJ_dG = 0 to the end of dJ_ds
+        dJ_ds = np.zeros(L.shape[0])
+        dj_ds = self.dJ_by_dsurfacecoefficients()
+        dJ_ds[:dj_ds.size] = dj_ds
+        adj = forward_backward(P, L, U, dJ_ds)
+        
+        adj_times_dg_dcoil = dconstraint_dcoils_vjp(adj, booz_surf, iota, G, booz_surf.bs)
+        self._dJ = dJ_by_dcoils - adj_times_dg_dcoil
 
     def dJ_by_dA(self):
         xtheta = self.surface.gammadash2()[self.idx]
