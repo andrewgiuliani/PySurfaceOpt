@@ -1,7 +1,7 @@
 import numpy as np
 import os
 from simsopt.util.zoo import get_ncsx_data
-from simsopt.field.coil import Current, coils_via_symmetries
+from simsopt.field.coil import ScaledCurrent, Current, coils_via_symmetries
 from simsopt.field.biotsavart import BiotSavart
 from simsopt.geo.boozersurface import BoozerSurface, boozer_surface_residual
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
@@ -12,6 +12,9 @@ from pysurfaceopt.surfaceobjectives import Volume
 def compute_surfaces_in_NCSX(mpol=10, ntor=10, exact=True, Nt_coils=12, write_to_file=False, vol_list=None, tol=1e-13):
     PPP = 20
     base_curves, base_currents, ma = get_ncsx_data(Nt_coils=Nt_coils, Nt_ma=10, ppp=PPP)
+    base_currents = [Current(curr.x*4 * np.pi * 1e-7) for curr in base_currents]
+    base_currents = [ScaledCurrent(curr, 1/(4 * np.pi * 1e-7)) for curr in base_currents]
+ 
     nfp = ma.nfp
     stellsym = True
     coils = coils_via_symmetries(base_curves, base_currents, ma.nfp, stellsym)
@@ -110,6 +113,9 @@ def load_surfaces_in_NCSX(mpol=10, ntor=10, stellsym=True, Nt_coils=6, idx_surfa
         vol_targets = inlabels[:,0]
 
     base_curves, base_currents, ma = get_ncsx_data(Nt_coils=Nt_coils, Nt_ma=10, ppp=PPP)
+    base_currents = [Current(curr.x*4 * np.pi * 1e-7) for curr in base_currents]
+    base_currents = [ScaledCurrent(curr, 1/(4 * np.pi * 1e-7)) for curr in base_currents]
+    
     nfp = ma.nfp
     stellsym = True
     coils = coils_via_symmetries(base_curves, base_currents, ma.nfp, stellsym)
