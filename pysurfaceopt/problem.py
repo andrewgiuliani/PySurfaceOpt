@@ -362,9 +362,9 @@ class SurfaceProblem(Optimizable):
                 res['gradient'] = bs.res['gradient']
         res_list = [r for rlist in MPI.COMM_WORLD.allgather(res_list) for r in rlist]
 
-        iotas = [ res['iota'] for res in self.boozer_surface_reference ]
-        volumes = [Volume(bs.surface).J() for bs in self.boozer_surface_list]
-        areas = [Area(bs.surface).J() for bs in self.boozer_surface_list]
+        iotas = [ abs(res['iota']) for res in self.boozer_surface_reference ]
+        volumes = [abs(Volume(bs.surface).J()) for bs in self.boozer_surface_list]
+        areas = [abs(Area(bs.surface).J()) for bs in self.boozer_surface_list]
         aspect_ratios = [Aspect_ratio(bs.surface).J() for bs in self.boozer_surface_list]
         mR = [R.J() for R in self.J_major_radii]
         boozerRes = [Jbr.J() for Jbr in self.J_boozer_residual]
@@ -373,23 +373,24 @@ class SurfaceProblem(Optimizable):
         other_char = {}
         other_char['||non qs||_2 / ||qs||_2'] = ' '.join('%.6e'%r for r in [i for d in MPI.COMM_WORLD.allgather(ratio) for i in d] )
         other_char['boozer residual'] = ' '.join('%.6e'%ar for ar in [i for d in MPI.COMM_WORLD.allgather(boozerRes) for i in d])
-        other_char['length'] = f'{sum([J.J() for J in self.J_coil_lengths]):.6e}'
+        other_char['total length'] = f'{sum([J.J() for J in self.J_coil_lengths]):.6e}'
+        other_char['coil lengths'] = ' '.join([f"{J.J():.6e}" for J in self.J_coil_lengths])
+        other_char['min_arc_length'] = f"{min([np.min(np.abs(coil.incremental_arclength())) for coil in self._base_curves]):.6e}"
         other_char['minimum distance'] = f"{self.J_distance.shortest_distance():.6e}"
         other_char['curvature'] = " ".join([f"{np.max(c.kappa()):.6e}" for c in self._base_curves])
         other_char['msc'] = " ".join([f"{Jmsc.msc():.6e}" for Jmsc in self.J_msc])
-        other_char['min_arc_length'] = f"{min([np.min(np.abs(coil.incremental_arclength())) for coil in self._base_curves]):.6e}"
         other_char['iotas'] = ' '.join('%.6e'%i for i in [i for d in MPI.COMM_WORLD.allgather(iotas) for i in d] )
         if self.iotas_avg_target is not None:
-            other_char["iotas_avg_target"] = f"{self.iotas_avg_target:.6e}"
+            other_char["iotas_avg_target"] = f"{abs(self.iotas_avg_target):.6e}"
         if self.iotas_target is not None:
-            other_char["iotas_target"] = ' '.join('%.6e'%i if i is not None   else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_target) for i in d] )
+            other_char["iotas_target"] = ' '.join('%.6e'%abs(i) if i is not None   else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_target) for i in d] )
         if self.iotas_bound_weight is not None:
-            other_char["iotas_lb"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in d] )
+            other_char["iotas_lb"] = ' '.join('%.6e'%abs(i) if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in d] )
         if self.iotas_bound_weight is not None:
-            other_char["iotas_ub"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in d])
-        other_char['aspect ratios'] = ' '.join('%.6e'%ar for ar in [i for d in MPI.COMM_WORLD.allgather(aspect_ratios) for i in d])
-        other_char['volumes'] = ' '.join('%.6e'%v for v in [i for d in MPI.COMM_WORLD.allgather(volumes) for i in d])
-        other_char['areas'] = ' '.join('%.6e'%a for a in [i for d in MPI.COMM_WORLD.allgather(areas) for i in d])
+            other_char["iotas_ub"] = ' '.join('%.6e'%abs(i) if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in d])
+        other_char['aspect ratios'] = ' '.join('%.6e'%abs(ar) for ar in [i for d in MPI.COMM_WORLD.allgather(aspect_ratios) for i in d])
+        other_char['volumes'] = ' '.join('%.6e'%abs(v) for v in [i for d in MPI.COMM_WORLD.allgather(volumes) for i in d])
+        other_char['areas'] = ' '.join('%.6e'%abs(a) for a in [i for d in MPI.COMM_WORLD.allgather(areas) for i in d])
         other_char['major radii'] = ' '.join('%.6e'%mr for mr  in [i for d in MPI.COMM_WORLD.allgather(mR) for i in d])
         if self.mr_weight is not None:
             other_char["major radii targets"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.major_radii_targets) for i in d])
