@@ -54,7 +54,7 @@ def compute_surfaces_in_NCSX(mpol=10, ntor=10, exact=True, Nt_coils=12, write_to
             if exact:
                 res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
                 r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
-                print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={label.J():.3f}, |label error|={np.abs(label.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian'])}")
+                print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={label.J():.3f}, |label error|={np.abs(label.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
             else:
                 res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=tol, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual')
                 r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
@@ -132,7 +132,7 @@ def load_surfaces_in_NCSX(mpol=10, ntor=10, stellsym=True, Nt_coils=6, idx_surfa
         if exact:
             res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
             r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
-            print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={ll.J():.3f}, |label error|={np.abs(ll.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian'])}")
+            print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={ll.J():.3f}, |label error|={np.abs(ll.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
         else:
             res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=tol, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual')
             r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)

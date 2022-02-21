@@ -204,7 +204,6 @@ class SurfaceProblem(Optimizable):
                     print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
         
         if False in success_list:
-            print("backtracking: failed surface solve")
             for reference_surface, boozer_surface in zip(self.boozer_surface_reference, self.boozer_surface_list):
                 boozer_surface.surface.set_dofs(reference_surface['dofs'])
                 iota0 = reference_surface['iota']
@@ -215,7 +214,9 @@ class SurfaceProblem(Optimizable):
 
             self.res = 2*self.res_reference
             self.dres = -self.dres_reference.copy() 
-            print("--------------------------------------------------------------------------------")
+            if self.rank == 0:
+                print("backtracking: failed surface solve")
+                print("----------------------------------------------------------------------")
             return
 
 
@@ -381,23 +382,23 @@ class SurfaceProblem(Optimizable):
         if self.iotas_avg_target is not None:
             other_char["iotas_avg_target"] = f"{self.iotas_avg_target:.6e}"
         if self.iotas_target is not None:
-            other_char["iotas_target"] = ' '.join('%.6e'%i if i is not None   else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_target) for i in d] )
+            other_char["iotas_target"] = ' '.join('%.6e'%i if i is not None   else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_target) for i in d] )
         if self.iotas_bound_weight is not None:
-            other_char["iotas_lb"] = ' '.join('%.6e'%i if i is not None  else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in d] )
+            other_char["iotas_lb"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in d] )
         if self.iotas_bound_weight is not None:
-            other_char["iotas_ub"] = ' '.join('%.6e'%i if i is not None  else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in d])
+            other_char["iotas_ub"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in d])
         other_char['aspect ratios'] = ' '.join('%.6e'%ar for ar in [i for d in MPI.COMM_WORLD.allgather(aspect_ratios) for i in d])
         other_char['volumes'] = ' '.join('%.6e'%v for v in [i for d in MPI.COMM_WORLD.allgather(volumes) for i in d])
         other_char['areas'] = ' '.join('%.6e'%a for a in [i for d in MPI.COMM_WORLD.allgather(areas) for i in d])
         other_char['major radii'] = ' '.join('%.6e'%mr for mr  in [i for d in MPI.COMM_WORLD.allgather(mR) for i in d])
         if self.mr_weight is not None:
-            other_char["major radii targets"] = ' '.join('%.6e'%i if i is not None  else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.major_radii_targets) for i in d])
+            other_char["major radii targets"] = ' '.join('%.6e'%i if i is not None  else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.major_radii_targets) for i in d])
         
         if self.rank == 0:
             print(f"Iteration {self.iter}")
             print(f"Objective value:             {self.res:.6e}")
             print(f"Gradient:                    {np.linalg.norm(self.dres, ord=np.inf):.6e}")
-            console = Console()
+            console = Console(width=150)
             table1 = Table(expand=True)
             for k in self.res_dict.keys():
                 table1.add_column(k, style="dim")
