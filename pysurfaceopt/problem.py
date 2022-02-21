@@ -4,11 +4,15 @@ from mpi4py import MPI
 from simsopt._core.graph_optimizable import Optimizable
 import jax; jax.config.update('jax_platform_name', 'cpu')
 from simsopt.field.biotsavart import BiotSavart
+from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
 from pysurfaceopt.curveobjectives import MeanSquareCurvature
-from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, BoozerResidual, NonQuasiAxisymmetricRatio, Iotas
+from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, BoozerResidual, NonQuasiAxisymmetricRatio, Iotas, Volume, Area, Aspect_ratio
 from pysurfaceopt.surfaceobjectives import boozer_surface_dlsqgrad_dcoils_vjp
 from pysurfaceopt.surfaceobjectives import boozer_surface_dexactresidual_dcoils_dcurrents_vjp
 from simsopt.geo.curveobjectives import CurveLength, MinimumDistance, ArclengthVariation, LpCurveCurvature 
+from rich.console import Console
+from rich.table import Column, Table
+
 
 
 class SurfaceProblem(Optimizable):
@@ -75,7 +79,7 @@ class SurfaceProblem(Optimizable):
         
         dependencies+=self.J_nonQS_ratio
         if residual_weight is None:
-            self.residual_weight = [None for booz_s in self.boozer_surface_list]
+            self.residual_weight = None
         else:
             self.residual_weight=residual_weight
             dependencies+=self.J_boozer_residual
@@ -131,16 +135,15 @@ class SurfaceProblem(Optimizable):
 
         self.output = output
         self.outdir = f"output" + outdir_append + "/"
+    
+        itarget_string = ','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_target) for i in rlist])
+        ilb_string=','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in rlist])
+        iub_string=','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in rlist])
+        tftarget_string = ','.join('%.16e'%tf if tf is not None else "-" for tf in [i for rlist in MPI.COMM_WORLD.allgather(self.toroidal_flux_targets) for i in rlist])
+        mRtarget_string = ','.join('%.16e'%m if m is not None else "-" for m in [i for rlist in MPI.COMM_WORLD.allgather(self.major_radii_targets) for i in rlist])
 
-        MPI.COMM_WORLD.barrier()
         if self.output and self.rank==0:
             os.makedirs(self.outdir, exist_ok=True)
-            itarget_string = ','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_target) for i in rlist])
-            ilb_string=','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in rlist])
-            iub_string=','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in rlist])
-            tftarget_string = ','.join('%.16e'%tf if tf is not None else "-" for tf in [i for rlist in MPI.COMM_WORLD.allgather(self.toroidal_flux_targets) for i in rlist])
-            mRtarget_string = ','.join('%.16e'%m if m is not None else "-" for m in [i for rlist in MPI.COMM_WORLD.allgather(self.major_radii_targets) for i in rlist])
-
             out_targets = open(self.outdir + "out_targets.txt", "w")
             out_targets.write("iotas_targets " + itarget_string+"\n")
             out_targets.write("iotas_targets_weight " + str(self.iotas_target_weight) +"\n")
@@ -268,12 +271,12 @@ class SurfaceProblem(Optimizable):
             dres_dict['curvature'] = self.curvature_weight * sum([J8.dJ(partials=True)(self) for J8 in J_curvature])
         
         if self.residual_weight is not None:
-            residual =  sum([res_weight*res.J() if res_weight is not None else 0. for res_weight, res in zip(self.residual_weight, self.J_boozer_residual)] )
-            dresidual=  sum([res_weight*res.dJ(partial=True)(self) if res_weight is not None else 0. for res_weight, res in zip(self.residual_weight, self.J_boozer_residual)] )
+            residual =  sum([self.residual_weight*res.J() for res in self.J_boozer_residual] )/self.Nsurfaces
+            dresidual=  sum([self.residual_weight*res.dJ(partials=True)(self) for res in self.J_boozer_residual] )/self.Nsurfaces
             residual_list  = MPI.COMM_WORLD.allgather(residual)
             dresidual_list = MPI.COMM_WORLD.allgather(dresidual)
-            res_dict[ 'residual'] = sum(residual_list)
-            dres_dict['residual'] = sum(dresidual_list)
+            res_dict[ 'BoozerResidual'] = sum(residual_list)
+            dres_dict['BoozerResidual'] = sum(dresidual_list)
         
         if self.msc_weight is not None:
             res_dict[ 'msc']= self.msc_weight * sum([J13.J() for J13 in J_msc])
@@ -305,7 +308,118 @@ class SurfaceProblem(Optimizable):
 
         self.res =  sum(res_dict.values())
         self.dres = sum(dres_dict.values())
-    
+        
+        self.res_dict=res_dict
+        self.dres_dict=dres_dict
+
+    def callback(self, x):
+        assert np.allclose(self.x, x, rtol=0, atol=0)
+        
+        # check self.x is the same at all ranks
+        all_x = MPI.COMM_WORLD.allgather(self.x.copy())
+        for xx in all_x:
+            assert np.allclose(self.x, xx, rtol=0, atol=0)
+
+        # update reference dofs used as initial guesses during line search.
+        self.boozer_surface_reference = [{"dofs": boozer_surface.surface.get_dofs(),
+                                         "iota": boozer_surface.res["iota"],
+                                          "G": boozer_surface.res["G"]} for boozer_surface in self.boozer_surface_list]
+        # update reference res, and dres
+        self.x_reference[:] = x[:]
+        self.res_reference = self.res
+        self.dres_reference[:] = self.dres[:]
+
+
+        self.iter+=1
+        
+        def compute_non_quasisymmetry_L2(in_surface):
+            bs = BiotSavart(self.coils)
+            phis = np.linspace(0, 1/in_surface.nfp, 100, endpoint=False)
+            thetas = np.linspace(0, 1., 100, endpoint=False)
+            s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+            s.set_dofs(in_surface.get_dofs())
+
+            x = s.gamma()
+            B = bs.set_points(x.reshape((-1, 3))).B().reshape(x.shape)
+            mod_B = np.linalg.norm(B, axis=2)
+            n = np.linalg.norm(s.normal(), axis=2)
+            mean_phi_mod_B = np.mean(mod_B*n, axis=0)/np.mean(n, axis=0)
+            mod_B_QS = mean_phi_mod_B[None, :]
+            mod_B_non_QS = mod_B - mod_B_QS
+            non_qs = np.mean(mod_B_non_QS**2 * n)**0.5
+            qs = np.mean(mod_B_QS**2 * n)**0.5
+            return non_qs, qs
+
+        ratio = []
+        for booz_surf in self.boozer_surface_list:
+            non_qs, qs = compute_non_quasisymmetry_L2(booz_surf.surface)
+            ratio.append(non_qs/qs)
+
+        res_list = [ {'type':bs.res['type'], 'success':bs.res['success'], 'iter':bs.res['iter'], 'residual':bs.res['residual']} for bs in self.boozer_surface_list ]
+        for res, bs in zip(res_list, self.boozer_surface_list):
+            if bs.res['type'] != 'exact':
+                res['gradient'] = bs.res['gradient']
+        res_list = [r for rlist in MPI.COMM_WORLD.allgather(res_list) for r in rlist]
+
+        iotas = [ res['iota'] for res in self.boozer_surface_reference ]
+        volumes = [Volume(bs.surface).J() for bs in self.boozer_surface_list]
+        areas = [Area(bs.surface).J() for bs in self.boozer_surface_list]
+        aspect_ratios = [Aspect_ratio(bs.surface).J() for bs in self.boozer_surface_list]
+        mR = [R.J() for R in self.J_major_radii]
+        boozerRes = [Jbr.J() for Jbr in self.J_boozer_residual]
+
+        
+        other_char = {}
+        other_char['||non qs||_2 / ||qs||_2'] = ' '.join('%.6e'%r for r in [i for d in MPI.COMM_WORLD.allgather(ratio) for i in d] )
+        other_char['boozer residual'] = ' '.join('%.6e'%ar for ar in [i for d in MPI.COMM_WORLD.allgather(boozerRes) for i in d])
+        other_char['length'] = f'{sum([J.J() for J in self.J_coil_lengths]):.6e}'
+        other_char['minimum distance'] = f"{self.J_distance.shortest_distance():.6e}"
+        other_char['curvature'] = " ".join([f"{np.max(c.kappa()):.6e}" for c in self._base_curves])
+        other_char['msc'] = " ".join([f"{Jmsc.msc():.6e}" for Jmsc in self.J_msc])
+        other_char['min_arc_length'] = f"{min([np.min(np.abs(coil.incremental_arclength())) for coil in self._base_curves]):.6e}"
+        other_char['iotas'] = ' '.join('%.6e'%i for i in [i for d in MPI.COMM_WORLD.allgather(iotas) for i in d] )
+        if self.iotas_avg_target is not None:
+            other_char["iotas_avg_target"] = f"{self.iotas_avg_target:.6e}"
+        if self.iotas_target is not None:
+            other_char["iotas_target"] = ' '.join('%.6e'%i if i is not None   else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_target) for i in d] )
+        if self.iotas_bound_weight is not None:
+            other_char["iotas_lb"] = ' '.join('%.6e'%i if i is not None  else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in d] )
+        if self.iotas_bound_weight is not None:
+            other_char["iotas_ub"] = ' '.join('%.6e'%i if i is not None  else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in d])
+        other_char['aspect ratios'] = ' '.join('%.6e'%ar for ar in [i for d in MPI.COMM_WORLD.allgather(aspect_ratios) for i in d])
+        other_char['volumes'] = ' '.join('%.6e'%v for v in [i for d in MPI.COMM_WORLD.allgather(volumes) for i in d])
+        other_char['areas'] = ' '.join('%.6e'%a for a in [i for d in MPI.COMM_WORLD.allgather(areas) for i in d])
+        other_char['major radii'] = ' '.join('%.6e'%mr for mr  in [i for d in MPI.COMM_WORLD.allgather(mR) for i in d])
+        if self.mr_weight is not None:
+            other_char["major radii targets"] = ' '.join('%.6e'%i if i is not None  else "--------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.major_radii_targets) for i in d])
+        
+        if self.rank == 0:
+            print(f"Iteration {self.iter}")
+            print(f"Objective value:             {self.res:.6e}")
+            print(f"Gradient:                    {np.linalg.norm(self.dres, ord=np.inf):.6e}")
+            console = Console()
+            table1 = Table(expand=True)
+            for k in self.res_dict.keys():
+                table1.add_column(k, style="dim")
+            table1.add_row(*[f"{v:.6e}" for v in self.res_dict.values()])
+            console.print(table1)
+
+            table2 = Table(show_header=False, expand=True) 
+            for k in other_char.keys():
+                table2.add_row(k, other_char[k])
+            console.print(table2)
+
+            for res in res_list:
+                if res['type'] == 'exact':
+                    print(f"iter={res['iter']}, success={res['success']}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e}")
+                else:
+                    print(f"iter={res['iter']}, success={res['success']}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+ 
+            print("################################################################################")
+
+
+
+
     def recompute_bell(self, parent=None):
         self.update()
     def J(self, verbose=False):

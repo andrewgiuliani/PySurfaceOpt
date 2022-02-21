@@ -64,6 +64,55 @@ class Volume:
     def dJ_by_dcoils(self):
         return Derivative()
 
+class Aspect_ratio:
+    """
+    Wrapper class for aspect ratio.
+    """
+
+    def __init__(self, in_surface):
+        phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
+        phis += phis[1]/2
+
+        thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)
+        s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+        s.set_dofs(in_surface.get_dofs())
+
+        self.in_surface = in_surface
+        self.surface = s
+
+    def J(self):
+        """
+        Compute the volume enclosed by the surface.
+        """
+        self.surface.set_dofs(self.in_surface.get_dofs())
+        return self.surface.aspect_ratio()
+
+class Area:
+    """
+    Wrapper class for area.
+    """
+
+    def __init__(self, in_surface):
+        phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
+        phis += phis[1]/2
+
+        thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)
+        s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+        s.set_dofs(in_surface.get_dofs())
+
+        self.in_surface = in_surface
+        self.surface = s
+
+    def J(self):
+        """
+        Compute the volume enclosed by the surface.
+        """
+        self.surface.set_dofs(self.in_surface.get_dofs())
+        return self.surface.area()
+
+
+
+
 class MajorRadius(Optimizable): 
     r"""
     This objective computes the major radius of a toroidal surface with the following formula:
@@ -341,8 +390,11 @@ class BoozerResidual(Optimizable):
         self.boozer_surface = boozer_surface
         
         # same number of points as on the solved surface
-        phis   = in_surface.quadpoints_phi
-        thetas = in_surface.quadpoints_theta
+        #phis   = in_surface.quadpoints_phi
+        #thetas = in_surface.quadpoints_theta
+        phis = np.linspace(0, 1/in_surface.nfp, 2*sDIM, endpoint=False)
+        thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)
+
         s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
         s.set_dofs(in_surface.get_dofs())
 
@@ -367,7 +419,7 @@ class BoozerResidual(Optimizable):
         self._J = None
         self._dJ = None
 
-    def compute(self, compute_derivatives=0):
+    def compute(self):
         self.surface.set_dofs(self.in_surface.get_dofs())
         self.biotsavart.set_points(self.surface.gamma().reshape((-1,3)))
         
@@ -379,14 +431,37 @@ class BoozerResidual(Optimizable):
         r = np.concatenate((r, [np.sqrt(self.constraint_weight)*(self.boozer_surface.label.J()-self.boozer_surface.targetlabel)] ) )
         self._J = 0.5*np.sum(r*r)
         
-        r, J = boozer_surface_residual(surface, iota, G, self.biotsavart, derivatives=1)
         booz_surf = self.boozer_surface
-        iota = booz_surf.res['iota']
-        G = booz_surf.res['G']
-        
+        r, J = boozer_surface_residual(surface, iota, G, self.biotsavart, derivatives=1)
+        P, L, U = booz_surf.res['PLU']
+        dconstraint_dcoils_vjp = boozer_surface_dexactresidual_dcoils_dcurrents_vjp if booz_surf.res['type'] == 'exact' else boozer_surface_dlsqgrad_dcoils_vjp
+
         dJ_by_dB = self.dJ_by_dB()
         dJ_by_dcoils = self.biotsavart.B_vjp(dJ_by_dB)
-        self._dJ = dJ_by_dcoils
+
+        # dJ_diota, dJ_dG  to the end of dJ_ds are on the end
+        r = np.concatenate((r, [np.sqrt(self.constraint_weight)*(self.boozer_surface.label.J()-self.boozer_surface.targetlabel)] ) )
+        dl = np.zeros((J.shape[1],))
+        dl[:-2] = self.boozer_surface.label.dJ_by_dsurfacecoefficients()
+        J = np.concatenate((J, np.sqrt(self.constraint_weight) * dl[None, :]), axis=0)
+        dJ_ds = J.T@r
+        adj = forward_backward(P, L, U, dJ_ds)
+        
+        adj_times_dg_dcoil = dconstraint_dcoils_vjp(adj, booz_surf, iota, G, booz_surf.bs)
+        self._dJ = dJ_by_dcoils -  adj_times_dg_dcoil
+
+    def dJ_by_dB(self):
+        """
+        Return the partial derivative of the objective with respect to the magnetic field
+        """
+        
+        surface = self.surface
+        r, r_dB = boozer_surface_residual_dB(surface, self.boozer_surface.res['iota'], self.boozer_surface.res['G'], self.biotsavart, derivatives=0)
+        dJ_by_dB = r[:, None]*r_dB
+        dJ_by_dB = np.sum(dJ_by_dB.reshape((-1, 3, 3)), axis=1)
+        return dJ_by_dB
+
+
 
 
 class NonQuasiAxisymmetricRatio(Optimizable):

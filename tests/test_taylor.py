@@ -10,8 +10,8 @@ rank = comm.rank
 
 
 #boozer_surface_list, base_curves, base_currents, coils = pys.compute_surfaces_in_NCSX(Nt_coils=12, exact=True, write_to_file=True)
-#boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0,1], exact=True, time_stamp='1636472072.192064')
-boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[rank], exact=True, time_stamp='1636472072.192064')
+boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0,1], exact=True, time_stamp='1636472072.192064')
+#boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[rank], exact=True, time_stamp='1636472072.192064')
 
 ############################################################################
 ## SET THE TARGET IOTAS, MAJOR RADIUS, TOROIDAL FLUX                      ##
@@ -45,6 +45,9 @@ else:
 KAPPA_MAX = 5.
 KAPPA_WEIGHT = 1e-9
 
+MSC_MAX = 5.
+MSC_WEIGHT = 1e-9
+
 LENGTHBOUND = 18.
 LENGTHBOUND_WEIGHT = 1e-9
 
@@ -56,6 +59,7 @@ ALEN_WEIGHT = 1e-7
 IOTAS_TARGET_WEIGHT = 1.
 TF_WEIGHT = 1.
 MR_WEIGHT = 1.
+RES_WEIGHT = 1e-3
 
 
 
@@ -63,9 +67,13 @@ problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, co
                              iotas_target=iotas_target, major_radii_targets=mr_target, toroidal_flux_targets=tf_target, 
                              iotas_target_weight=IOTAS_TARGET_WEIGHT, mr_weight=MR_WEIGHT, tf_weight=TF_WEIGHT,
                              minimum_distance=MIN_DIST, kappa_max=KAPPA_MAX, lengthbound_threshold=LENGTHBOUND,
+                             msc_max=MSC_MAX, msc_weight=MSC_WEIGHT,
                              distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
+                             residual_weight=RES_WEIGHT,
                              outdir_append="_runID=-1")
 coeffs = problem.x.copy()
+problem.callback(coeffs)
+
 def taylor_test(obj, x, order=6, h=None, verbose=False):
     if h is None:
         np.random.seed(1)

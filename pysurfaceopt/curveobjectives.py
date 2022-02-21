@@ -2,6 +2,7 @@ import numpy as np
 from jax import grad, vjp, jit
 import jax.numpy as jnp
 from simsopt._core.graph_optimizable import Optimizable
+from simsopt._core.derivative import Derivative, derivative_dec
 
 
 @jit
@@ -14,7 +15,7 @@ def curve_msc_pure(kappa, gammadash):
 
 class MeanSquareCurvature(Optimizable):
     def __init__(self, curve, threshold):
-        Optimizable.__init__(self, x0=np.asarray([]), depends_on=[curve])
+        Optimizable.__init__(self, depends_on=[curve])
         self.curve = curve
         self.threshold = threshold
         self.thisgrad0 = jit(lambda kappa, gammadash: grad(curve_msc_pure, argnums=0)(kappa, gammadash))
@@ -26,6 +27,7 @@ class MeanSquareCurvature(Optimizable):
     def J(self):
         return 0.5 * max(self.msc()-self.threshold, 0)**2
 
+    @derivative_dec
     def dJ(self):
         grad0 = self.thisgrad0(self.curve.kappa(), self.curve.gammadash())
         grad1 = self.thisgrad1(self.curve.kappa(), self.curve.gammadash())
