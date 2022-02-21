@@ -8,8 +8,9 @@ comm = MPI.COMM_WORLD
 rank = comm.rank
 
 
-#boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[2*rank, 2*rank+1], exact=True, time_stamp='1636472072.192064')
-boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0,1,2,3], exact=True, time_stamp='1636472072.192064')
+#boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[2*rank, 2*rank+1], exact=True, time_stamp='1636472072.192064', tol=1e-13)
+#boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0,1,2,3], exact=True, time_stamp='1636472072.192064', tol=1e-13)
+boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0,1,2,3], exact=False, time_stamp='1636473777.0197566', tol=1e-10)
 # you can either fix the current in a single coil or introduce a toroidal flux constraint to prevent
 # currents from going to zero.  We do the former here:
 base_currents[0].fix_all()

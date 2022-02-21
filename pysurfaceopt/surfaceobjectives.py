@@ -30,6 +30,7 @@ class Volume:
 
     def __init__(self, in_surface):
         #phis = np.linspace(0, 1/in_surface.nfp, sDIM, endpoint=False)
+        sDIM = 10
         phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
         phis += phis[1]/2
 
@@ -708,15 +709,16 @@ def boozer_surface_dlsqgrad_dcoils_vjp(lm, booz_surf, iota, G, biotsavart):
     v2 = np.sum(r.reshape((-1, 3, 1))*np.sum(lm[None, None, :]*d2r_dsdB, axis=-1).reshape((-1, 3, 3)), axis=1)
     v3 = np.sum(r.reshape((-1, 3, 1, 1))*np.sum(lm[None, None, None, :]*d2r_dsdgradB, axis=-1).reshape((-1, 3, 3, 3)), axis=1)
     dres_dcoils = biotsavart.B_and_dB_vjp(v1+v2, v3)
-    dres_dcoils = [a + b for a, b in zip(dres_dcoils[0], dres_dcoils[1])]
+    return dres_dcoils[0]+dres_dcoils[1]
+    #dres_dcoils = [a + b for a, b in zip(dres_dcoils[0], dres_dcoils[1])]
 
-    lm_times_dres_dB = v1 + v2
-    lm_times_dres_dgradB = v3
-    dB_by_dcoilcurrents = biotsavart.dB_by_dcoilcurrents()
-    d2B_by_dXdcoilcurrents = biotsavart.d2B_by_dXdcoilcurrents()
-    dres_dcurrents = [np.sum(lm_times_dres_dB*dB_dcurr) + np.sum(lm_times_dres_dgradB * dgradB_dcurr) for dB_dcurr, dgradB_dcurr in zip(dB_by_dcoilcurrents, d2B_by_dXdcoilcurrents)]
+    #lm_times_dres_dB = v1 + v2
+    #lm_times_dres_dgradB = v3
+    #dB_by_dcoilcurrents = biotsavart.dB_by_dcoilcurrents()
+    #d2B_by_dXdcoilcurrents = biotsavart.d2B_by_dXdcoilcurrents()
+    #dres_dcurrents = [np.sum(lm_times_dres_dB*dB_dcurr) + np.sum(lm_times_dres_dgradB * dgradB_dcurr) for dB_dcurr, dgradB_dcurr in zip(dB_by_dcoilcurrents, d2B_by_dXdcoilcurrents)]
 
-    return dres_dcoils, dres_dcurrents
+    #return dres_dcoils, dres_dcurrents
 
 
 
