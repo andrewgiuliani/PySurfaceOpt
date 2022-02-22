@@ -333,9 +333,9 @@ class SurfaceProblem(Optimizable):
                                          "iota": boozer_surface.res["iota"],
                                           "G": boozer_surface.res["G"]} for boozer_surface in self.boozer_surface_list]
         # update reference res, and dres
-        self.x_reference[:] = x[:]
+        self.x_reference = x.copy()
         self.res_reference = self.res
-        self.dres_reference[:] = self.dres[:]
+        self.dres_reference = self.dres.copy()
 
 
         self.iter+=1
@@ -430,9 +430,6 @@ class SurfaceProblem(Optimizable):
                     print(f"iter={res['iter']}, success={res['success']}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
  
             print("################################################################################")
-
-
-
 
     def recompute_bell(self, parent=None):
         self.update()
