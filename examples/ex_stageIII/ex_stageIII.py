@@ -23,7 +23,6 @@ else:
 ## SET THE TARGET IOTAS, MAJOR RADIUS, TOROIDAL FLUX                      ##
 ############################################################################
 
-iotas_target = [None for bs in boozer_surface_list]
 mr_target   = [None for bs in boozer_surface_list]
 tf_target   = [None for bs in boozer_surface_list]
 

@@ -6,8 +6,8 @@ from simsopt.field.biotsavart import BiotSavart
 from simsopt.geo.curvexyzfourier import CurveXYZFourier
 from simsopt.geo.boozersurface import BoozerSurface, boozer_surface_residual
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
-from pysurfaceopt.surfaceobjectives import Volume
-
+from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, Volume
+from pysurfaceopt.problem import SurfaceProblem
 
 
 def get_stageII_data(Nt_coils=16, Nt_ma=10, ppp=20, length=18):
@@ -49,6 +49,128 @@ def get_stageII_data(Nt_coils=16, Nt_ma=10, ppp=20, length=18):
 
 
 
+def get_stageIII_data(coilset='nine', length=18):
+    order=16
+    ppp=10
+
+    assert length == 18 or length == 20 or length == 22 or length == 24
+    
+    DIR = os.path.dirname(os.path.realpath(__file__))
+    dofs = np.loadtxt(DIR + f'/data_stageIII/{coilset}/len{length}.txt')
+    currents = dofs[:4].tolist()
+    geo_dofs = dofs[4:].reshape((4, -1))
+
+    base_currents = [ScaledCurrent(Current(c), 1/(4*np.pi*1e-7)) for c in currents]
+    base_curves = [CurveXYZFourier(order*ppp, order) for i in range(4)]
+    for i in range(4):
+        base_curves[i].x = geo_dofs[i, :]
+
+    return (base_curves, base_currents)
+
+def get_stageIII_problem(coilset='nine', length=18, verbose=False):
+    ts_dict={18:'1639707710.6463501', 20:'1639796640.5101252', 22:'1642522947.7884622', 24: '1642523475.5701194'}
+    mr = np.sqrt(0.5678672050465505/ ( 2 * np.pi**2 ) )
+    vol_list = -2. * np.pi**2 * np.linspace(0.01,mr, 9 if coilset=='nine' else 5) ** 2
+    
+    base_curves, base_currents = get_stageIII_data(coilset, length)
+
+    nfp = 2
+    stellsym = True
+    coils = coils_via_symmetries(base_curves, base_currents, nfp, stellsym)
+    
+    # load initial guesses for stageIII surfaces
+    boozer_surface_list=[]
+    tol=1e-13
+    ntor=10
+    mpol=10
+    phis = np.linspace(0, 1/nfp, 2*ntor+1, endpoint=False)[:ntor+1]
+    thetas = np.linspace(0, 1,   2*mpol+1, endpoint=False)
+    nquadphi = phis.size
+    nquadtheta=thetas.size
+    exact=True
+    Nt_coils=16
+    time_stamp = ts_dict[length]
+    DIR = os.path.dirname(os.path.realpath(__file__))
+    with open(DIR + "/data_stageII" + f"/surface_dofs_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{time_stamp}.txt", 'r') as f:
+        dofs = np.loadtxt(f)
+    with open(DIR + "/data_stageII"        + f"/iotaG_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{time_stamp}.txt", 'r') as f:
+        iotaG = np.loadtxt(f).reshape((-1,2))
+
+
+    for idx in range(9 if coilset=='nine' else 5):
+        s = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+        s.set_dofs(dofs[idx,:])
+        
+        iota0 = iotaG[idx,0]
+        G0 = iotaG[idx,1]
+        
+        bs = BiotSavart(coils)
+        ll = Volume(s)
+        
+        # need to actually store target surface label for BoozerLS surfaces
+        target = vol_list[idx]
+        boozer_surface = BoozerSurface(bs, s, ll, target)
+        res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
+        r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
+        if verbose:
+            print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={ll.J():.3f}, |label error|={np.abs(ll.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
+        boozer_surface_list.append(boozer_surface)
+
+
+    for idx, booz_surf in enumerate(boozer_surface_list):
+        booz_surf.bs = BiotSavart(coils)
+        booz_surf.targetlabel = vol_list[idx]
+    
+    ############################################################################
+    ## SET THE TARGET IOTAS, MAJOR RADIUS, TOROIDAL FLUX                      ##
+    ############################################################################
+    
+    mr_target_dict = {18: 1.0044683763529081e+00, 20: 1.0044901967769049e+00, 22: 1.0044959075472701e+00, 24: 1.0044957607222651e+00}
+    tf_target_dict = {18:-8.6969394054304812e-05, 20:-9.2487854903688596e-05, 22:-9.1817899465679867e-05, 24:-8.9795375467393711e-05}
+    
+    mr_target   = [None for bs in boozer_surface_list]
+    tf_target   = [None for bs in boozer_surface_list]
+
+    mr_target[0] = mr_target_dict[length] 
+    tf_target[0] = tf_target_dict[length]
+    
+    ############################################################################
+    ## SET THE INITIAL WEIGHTS, TARGET CURVATURE AND TARGET TOTAL COIL LENGTH ##
+    ############################################################################
+    kappa_weight_dict =       {18: 1e-5, 20:1e-5, 22:1e-5, 24:1e-5}
+    msc_weight_dict =         {18: 1e-5, 20:1e-5, 22:1e-5, 24:1e-5}
+    lengthbound_weight_dict = {18:1e-4, 20:1e-4, 22:1e-4, 24:1e-4}
+    min_dist_weight_dict =    {18:1e-2, 20:1e-1, 22:1e-2, 24:1e-2}
+    alen_weight_dict =        {18:1e-7, 20:1e-7, 22:1e-8, 24:1e-8}
+    tf_weight_dict =          {18:1e6, 20:1e6, 22:1e6, 24:1e6}
+    
+    KAPPA_MAX = 5.
+    KAPPA_WEIGHT = kappa_weight_dict[length]
+    
+    MSC_MAX = 5.
+    MSC_WEIGHT = msc_weight_dict[length] 
+    
+    LENGTHBOUND = length
+    LENGTHBOUND_WEIGHT = lengthbound_weight_dict[length] 
+    
+    MIN_DIST = 0.1
+    MIN_DIST_WEIGHT = min_dist_weight_dict[length] 
+    
+    ALEN_WEIGHT = alen_weight_dict[length] 
+    
+    IOTAS_AVG_TARGET = -0.42
+    IOTAS_AVG_WEIGHT = 1.
+    TF_WEIGHT = tf_weight_dict[length] 
+    MR_WEIGHT = 1.
+    
+    problem = SurfaceProblem(boozer_surface_list, base_curves, base_currents, coils,
+                             major_radii_targets=mr_target, toroidal_flux_targets=tf_target, 
+                             iotas_avg_weight=IOTAS_AVG_WEIGHT, iotas_avg_target=IOTAS_AVG_TARGET, mr_weight=MR_WEIGHT, tf_weight=TF_WEIGHT,
+                             minimum_distance=MIN_DIST, kappa_max=KAPPA_MAX, lengthbound_threshold=LENGTHBOUND,
+                             msc_max=MSC_MAX, msc_weight=MSC_WEIGHT,
+                             distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
+                             outdir_append="")
+    return problem
 
 
 # default tol for BoozerLS is 1e-10
@@ -156,7 +278,7 @@ def load_surfaces_in_NCSX(mpol=10, ntor=10, stellsym=True, Nt_coils=6, idx_surfa
         inlabels = np.loadtxt(f)
         vol_targets = inlabels[:,0]
 
-    base_curves, base_currents, ma = get_stageII_data(Nt_coils=Nt_coils, Nt_ma=10, ppp=PPP)
+    base_curves, base_currents, ma = get_ncsx_data(Nt_coils=Nt_coils, Nt_ma=10, ppp=PPP)
     base_currents = [Current(curr.x*4 * np.pi * 1e-7) for curr in base_currents]
     base_currents = [ScaledCurrent(curr, 1/(4 * np.pi * 1e-7)) for curr in base_currents]
     
@@ -192,7 +314,7 @@ def load_surfaces_in_NCSX(mpol=10, ntor=10, stellsym=True, Nt_coils=6, idx_surfa
 
 
 
-def compute_surfaces_in_stageII(mpol=10, ntor=10, exact=True, Nt_coils=12, write_to_file=False, vol_list=None, tol=1e-13, length=18):
+def compute_surfaces_in_stageII(mpol=10, ntor=10, exact=True, Nt_coils=16, write_to_file=False, vol_list=None, tol=1e-13, length=18):
     nfp = 2
     stellsym = True
 
@@ -275,7 +397,7 @@ def compute_surfaces_in_stageII(mpol=10, ntor=10, exact=True, Nt_coils=12, write
 
     return boozer_surface_list, base_curves, base_currents, coils
 
-def load_surfaces_in_stageII(length=18, mpol=10, ntor=10, stellsym=True, Nt_coils=6, idx_surfaces=np.arange(10), exact=True, time_stamp=None, tol=1e-13):
+def load_surfaces_in_stageII(length=18, mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=np.arange(10), exact=True, time_stamp=None, tol=1e-13, verbose=False):
     PPP = 10
     nfp = 2
     stellsym = True
@@ -320,14 +442,10 @@ def load_surfaces_in_stageII(length=18, mpol=10, ntor=10, stellsym=True, Nt_coil
         # need to actually store target surface label for BoozerLS surfaces
         target = vol_list[idx]
         boozer_surface = BoozerSurface(bs, s, ll, target)
-        if exact:
-            res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
-            r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
+        res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
+        r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
+        if verbose:
             print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={ll.J():.3f}, |label error|={np.abs(ll.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
-        else:
-            res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=tol, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
-            r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
-            print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={ll.J():.3f}, |label error|={np.abs(ll.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
         boozer_surface_list.append(boozer_surface)
     return boozer_surface_list, base_curves, base_currents, coils
 
