@@ -91,7 +91,7 @@ class SurfaceProblem(Optimizable):
             dependencies+=self.J_coil_lengths
 
         if iotas_target is None:
-            self.iotas_target = None
+            self.iotas_target = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.iotas_target = iotas_target
             dependencies+=self.J_iotas
@@ -238,7 +238,7 @@ class SurfaceProblem(Optimizable):
 
         res_dict['ratio']  = sum(ratio_list)/self.Nsurfaces
         dres_dict['ratio'] = sum(dratio_list)/self.Nsurfaces
-        if self.iotas_target is not None:
+        if self.iotas_target_weight is not None:
             iotas_penalty = self.iotas_target_weight * sum([0.5 * (J2.J()-iotas_target)**2 if iotas_target is not None else 0. for J2, iotas_target in zip(self.J_iotas, self.iotas_target)])
             diotas_penalty = self.iotas_target_weight * sum([ (J2.J()-iotas_target)*J2.dJ(partials=True)(self) if iotas_target is not None else 0. for J2, iotas_target in zip(self.J_iotas, self.iotas_target)])
             iotas_list = MPI.COMM_WORLD.allgather(iotas_penalty)
@@ -247,9 +247,13 @@ class SurfaceProblem(Optimizable):
             dres_dict['iotas'] = sum(diotas_list)
         
         if self.tf_weight is not None:
-            res_dict[ 'toroidal flux'] =  0.5 * self.tf_weight * sum( [ (J6.J() - l)**2 if l is not None else 0. for (J6, l) in zip(J_toroidal_flux, self.toroidal_flux_targets)])
-            dres_dict['toroidal flux'] =        self.tf_weight * sum( [ (J6.J() - l)*J6.dJ(partials=True)(self) if l is not None else 0. for (J6, l) in zip(J_toroidal_flux, self.toroidal_flux_targets)])
-
+            tf_penalty  =  0.5 * self.tf_weight * sum( [ (J6.J() - l)**2 if l is not None else 0. for (J6, l) in zip(J_toroidal_flux, self.toroidal_flux_targets)])
+            dtf_penalty =        self.tf_weight * sum( [ (J6.J() - l)*J6.dJ(partials=True)(self) if l is not None else 0. for (J6, l) in zip(J_toroidal_flux, self.toroidal_flux_targets)])
+            tf_list  = MPI.COMM_WORLD.allgather(tf_penalty)
+            dtf_list = MPI.COMM_WORLD.allgather(dtf_penalty)
+            res_dict[ 'toroidal flux'] = sum(tf_list)
+            dres_dict['toroidal flux'] = sum(dtf_list)
+        
         if self.lengthbound_weight is not None: 
             res_dict[ 'lengthbound'] = self.lengthbound_weight * 0.5 * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold])**2
             dres_dict['lengthbound'] = self.lengthbound_weight * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold]) * sum(J3.dJ(partials=True)(self) for J3 in J_coil_lengths)
@@ -291,8 +295,8 @@ class SurfaceProblem(Optimizable):
             diotas_list = [r for rlist in MPI.COMM_WORLD.allgather([Jtemp.dJ(partials=True)(self) for Jtemp in J_iotas]) for r in rlist]
             self.iotas_avg  = sum(iotas_list)/self.Nsurfaces
             diotas_avg = sum(diotas_list)/self.Nsurfaces
-            res_dict['iotas'] = 0.5 * self.iotas_avg_weight * ( self.iotas_avg - self.iotas_avg_target)**2
-            dres_dict['iotas'] =      self.iotas_avg_weight * ( self.iotas_avg - self.iotas_avg_target) * diotas_avg
+            res_dict['iotas avg'] = 0.5 * self.iotas_avg_weight * (self.iotas_avg - self.iotas_avg_target)**2
+            dres_dict['iotas avg'] =      self.iotas_avg_weight * (self.iotas_avg - self.iotas_avg_target) * diotas_avg
         
         if self.iotas_bound_weight is not None:
             iotas_lb = self.iotas_bound_weight * sum([0.5 * max([iotas_lb-Jtemp.J(),0])**2 if iotas_lb is not None else 0. for Jtemp, iotas_lb in zip(self.J_iotas, self.iotas_lb)])
@@ -385,6 +389,7 @@ class SurfaceProblem(Optimizable):
         other_char['msc'] = " ".join([f"{Jmsc.msc():.6e}" for Jmsc in self.J_msc])
         other_char['iotas'] = ' '.join('%.6e'%i for i in [i for d in MPI.COMM_WORLD.allgather(iotas) for i in d] )
         if self.iotas_avg_target is not None:
+            other_char["iotas avg"] = f"{abs(self.iotas_avg):.6e}"
             other_char["iotas_avg_target"] = f"{abs(self.iotas_avg_target):.6e}"
         if self.iotas_target is not None:
             other_char["iotas_target"] = ' '.join('%.6e'%abs(i) if i is not None   else "------------" for i in [i for d in MPI.COMM_WORLD.allgather(self.iotas_target) for i in d] )
