@@ -134,8 +134,10 @@ class SurfaceProblem(Optimizable):
         self.dres_reference = self.dres
 
         self.output = output
-        self.outdir = f"output" + outdir_append + "/"
-    
+        self.outdir="output"
+        if outdir_append != "":
+            self.outdir += "_" + outdir_append + "/"
+        
         itarget_string = ','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_target) for i in rlist])
         ilb_string=','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_lb) for i in rlist])
         iub_string=','.join('%.16e'%i if i is not None else "-" for i in [i for rlist in MPI.COMM_WORLD.allgather(self.iotas_ub) for i in rlist])
@@ -420,13 +422,12 @@ class SurfaceProblem(Optimizable):
             print(f"Objective value:             {self.res:.6e}")
             print(f"Gradient:                    {np.linalg.norm(self.dres, ord=np.inf):.6e}")
             console = Console(width=200)
-            table1 = Table(expand=True)
-            for k in self.res_dict.keys():
-                table1.add_column(k, style="dim")
+            table1 = Table(expand=True, show_header=False)
+            table1.add_row(*[f"{v}" for v in self.res_dict.keys()])
             table1.add_row(*[f"{v:.6e}" for v in self.res_dict.values()])
             console.print(table1)
 
-            table2 = Table(show_header=False, expand=True) 
+            table2 = Table(expand=True, show_header=False) 
             for k in other_char.keys():
                 table2.add_row(k, other_char[k])
             console.print(table2)
@@ -438,6 +439,8 @@ class SurfaceProblem(Optimizable):
                     print(f"iter={res['iter']}, success={res['success']}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
  
             print("################################################################################")
+            if self.output:
+                np.savetxt(self.outdir + f"x_{self.iter}.txt", self.x.reshape((1,-1)))
 
     def recompute_bell(self, parent=None):
         self.update()
