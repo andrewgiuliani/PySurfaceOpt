@@ -7,7 +7,7 @@ __version__ = '0.0.1'
 setup(
     name='PySurfaceOpt',
     long_description='',
-    install_requires=['numpy', 'scipy', 'argparse', 'matplotlib', 'wheel', 'rich'],
+    install_requires=['numpy', 'scipy', 'argparse', 'matplotlib', 'wheel', 'rich', 'bentley_ottmann'],
     packages = ["pysurfaceopt"],
     package_dir = {"pysurfaceopt": "pysurfaceopt"},
     package_data={'pysurfaceopt': ['data/*', 'data/ncsx/*']},

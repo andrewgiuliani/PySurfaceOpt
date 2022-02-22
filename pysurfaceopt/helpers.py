@@ -7,7 +7,8 @@ from simsopt.geo.curvexyzfourier import CurveXYZFourier
 from simsopt.geo.boozersurface import BoozerSurface, boozer_surface_residual
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
 from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, Volume
-from pysurfaceopt.problem import SurfaceProblem
+from ground.base import get_context
+from bentley_ottmann.planar import contour_self_intersects
 
 
 def get_stageII_data(Nt_coils=16, Nt_ma=10, ppp=20, length=18):
@@ -163,6 +164,7 @@ def get_stageIII_problem(coilset='nine', length=18, verbose=False):
     TF_WEIGHT = tf_weight_dict[length] 
     MR_WEIGHT = 1.
     
+    from pysurfaceopt.problem import SurfaceProblem
     problem = SurfaceProblem(boozer_surface_list, base_curves, base_currents, coils,
                              major_radii_targets=mr_target, toroidal_flux_targets=tf_target, 
                              iotas_avg_weight=IOTAS_AVG_WEIGHT, iotas_avg_target=IOTAS_AVG_TARGET, mr_weight=MR_WEIGHT, tf_weight=TF_WEIGHT,
@@ -451,4 +453,14 @@ def load_surfaces_in_stageII(length=18, mpol=10, ntor=10, stellsym=True, Nt_coil
 
 
 
+def is_self_intersecting(cs):
+    """
+    This function takes as input a cross section, represented as a polygon.
+    """
+    R = np.sqrt( cs[:,0]**2 + cs[:,1]**2)
+    Z = cs[:, 2]
 
+    context = get_context()
+    Point, Contour = context.point_cls, context.contour_cls
+    contour = Contour([ Point(R[i], Z[i]) for i in range(cs.shape[0]) ])
+    return contour_self_intersects(contour)

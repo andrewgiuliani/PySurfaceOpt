@@ -5,6 +5,7 @@ from simsopt._core.graph_optimizable import Optimizable
 import jax; jax.config.update('jax_platform_name', 'cpu')
 from simsopt.field.biotsavart import BiotSavart
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
+from pysurfaceopt.helpers import is_self_intersecting
 from pysurfaceopt.curveobjectives import MeanSquareCurvature
 from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, BoozerResidual, NonQuasiAxisymmetricRatio, Iotas, Volume, Area, Aspect_ratio
 from pysurfaceopt.surfaceobjectives import boozer_surface_dlsqgrad_dcoils_vjp
@@ -217,8 +218,7 @@ class SurfaceProblem(Optimizable):
                 print("backtracking: failed surface solve")
                 print("----------------------------------------------------------------------")
             return
-
-
+        
         J_iotas = self.J_iotas
         J_coil_lengths    = self.J_coil_lengths
         J_major_radii    = self.J_major_radii
@@ -339,7 +339,15 @@ class SurfaceProblem(Optimizable):
 
 
         self.iter+=1
-        
+
+        xs_list = [bs.surface.cross_section(0., thetas=np.linspace(0, 1, 100, endpoint=False)) for bs in self.boozer_surface_list]
+        si_list = [is_self_intersecting(xs) for xs in xs_list]
+        all_si_list = [bval for s_list in MPI.COMM_WORLD.allgather(si_list) for bval in s_list]
+        if self.rank==0:
+            if True in all_si_list:
+                bool_string = " ".join(['True' if b else 'False' for b in all_si_list])
+                print("Self-intersections " + bool_string)
+
         def compute_non_quasisymmetry_L2(in_surface):
             bs = BiotSavart(self.coils)
             phis = np.linspace(0, 1/in_surface.nfp, 100, endpoint=False)
