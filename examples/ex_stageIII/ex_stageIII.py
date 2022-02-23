@@ -81,4 +81,5 @@ def J_scipy(dofs,*args):
 
 from scipy.optimize import minimize
 res = minimize(J_scipy, coeffs, jac=True, method='bfgs', tol=1e-20, callback=problem.callback)
-
+if rank == 0:
+    print(f"{res['success']}, {res['message']}")
