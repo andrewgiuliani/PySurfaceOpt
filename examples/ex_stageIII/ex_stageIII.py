@@ -8,16 +8,10 @@ comm = MPI.COMM_WORLD
 rank = comm.rank
 
 length=18
-if length == 18:
-    boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_stageII(mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=[rank], exact=True, length=18, time_stamp='1639707710.6463501')
-elif length == 20:
-    boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_stageII(mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=[rank], exact=True, length=20, time_stamp='1639796640.5101252')
-elif length == 22:
-    boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_stageII(mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=[rank], exact=True, length=22, time_stamp='1642522947.7884622')
-elif length == 24:
-    boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_stageII(mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=[rank], exact=True, length=24, time_stamp='1642523475.5701194')
-else:
-    quit()
+
+assert length==18 or length==20 or length==22 or length==24
+ts_dict={18:'1639707710.6463501', 20: '1639796640.5101252', 22:'1642522947.7884622', 24:'1642523475.5701194'}
+boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_stageII(mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=[rank], exact=True, length=18, time_stamp=ts_dict[length])
 
 ############################################################################
 ## SET THE TARGET IOTAS, MAJOR RADIUS, TOROIDAL FLUX                      ##
@@ -81,4 +75,5 @@ def J_scipy(dofs,*args):
 
 from scipy.optimize import minimize
 res = minimize(J_scipy, coeffs, jac=True, method='bfgs', tol=1e-20, callback=problem.callback)
-
+if rank == 0:
+    print(f"{res['success']}, {res['message']}")
