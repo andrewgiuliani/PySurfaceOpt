@@ -1,6 +1,8 @@
 # PySurfaceOpt
 
-The goal is to take a set of coils and optimize them for quasiaxisymmetry on a number of surfaces.  
+The goal is to take a set of coils and optimize them to produce a magnetic field with precise quasiaxisymmetry.  This is done by computing magnetic surfaces in the vacuum field.  Then, the field's deviation from quasisymmetry on that surface is determined and used in the formulation of an optimization problem.  With an adjoint approach, we are able to obtain analytic derivatives for this optimization problem, yielding an efficient gradient-based algorithm.
+Starting from an initial coil set that presents nested magnetic surfaces for a large fraction of the volume, our method converges rapidly to coil systems generating fields with excellent quasi-symmetry and low particle losses.
+
 <p align="center">
 <img src="https://raw.githubusercontent.com/andrewgiuliani/PySurfaceOpt/main/len24.png" alt="QA-III[24] coils" width="500">
 </p>
