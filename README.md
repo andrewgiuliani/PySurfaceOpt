@@ -2,6 +2,10 @@
 
 The goal is to take a set of coils and optimize them for quasiaxisymmetry on a number of surfaces.  
 
+<img src="https://raw.githubusercontent.com/andrewgiuliani/PySurfaceOpt/main/len24.png" alt="QA-III[24] coils" width="500">
+
+
+
 ## Installation
 
 To use this code, first clone the repository including all its submodules, via
