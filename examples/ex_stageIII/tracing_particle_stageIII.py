@@ -38,6 +38,8 @@ def minor_radius(surface):
 try:
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
+    if comm.rank==0:
+        print(f"There are {comm.size} ranks available.")
 except ImportError:
     comm = None
 
