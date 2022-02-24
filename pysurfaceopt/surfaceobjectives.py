@@ -367,6 +367,27 @@ class ToroidalFlux(Optimizable):
 
         out = (1/ntheta) * np.sum(term1+term2+term3, axis=0)
         return out
+    
+    # derivative of toroidal flux with respect to volume enclosed by surface
+    def dJ_by_dvolume(self):
+        dJ_by_ds= self.dJ_by_dsurfacecoefficients()
+        dJ_by_dA = self.dJ_by_dA()
+        
+        dA_by_dX = self.biotsavart.dA_by_dX()
+        dx_ds = self.surface.dgamma_by_dcoeff()[self.idx]
+        dA_ds = np.sum(dA_by_dX[..., :, None] * dx_ds[..., None, :], axis=1)
+        
+        if self.in_boozer_surface.res['type'] == 'exact':
+            J = self.in_boozer_surface.res['jacobian']
+            rhs = np.zeros((J.shape[0],))
+            rhs[-1] = 1
+        else:
+            J = self.in_boozer_surface.res['d2val']
+            rhs = np.zeros((J.shape[0],))
+            raise Exception
+        ds_dV = np.linalg.solve(J, rhs)[:-2] # remove final two entries bc J does not depend directly on iota or G
+        dJ_by_dV = (dJ_by_ds + np.sum(dJ_by_dA[:,:,None] * dA_ds, axis=(0,1)) )@ds_dV
+        return dJ_by_dV
 
 class BoozerResidual(Optimizable):
     r"""
@@ -600,6 +621,7 @@ class NonQuasiAxisymmetricRatio(Optimizable):
         ddenom_by_dc = np.mean(0.5*dS_dc * B_QS[..., None]**2 + dS[..., None] * B_QS[..., None] * B_QS_dc, axis=(0, 1)) 
         dJ_by_dc = (denom * dnum_by_dc - num * ddenom_by_dc ) / denom**2 
         return dJ_by_dc
+
 
 class Iotas(Optimizable):
     def __init__(self, boozer_surface):

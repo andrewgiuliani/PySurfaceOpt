@@ -24,7 +24,7 @@ class SurfaceProblem(Optimizable):
                  kappa_max=None, msc_max=None, minimum_distance=None,
                  iotas_target_weight=None, iotas_bound_weight=None, iotas_avg_weight=None, mr_weight=None, tf_weight=None,
                  distance_weight=None, arclength_weight=None, curvature_weight=None, lengthbound_weight=None, msc_weight=None,
-                 residual_weight=None, 
+                 residual_weight=None, magnetic_well_weight=None,
                  outdir_append="", output=True, rank=0):
         
         self.rank = rank
@@ -255,7 +255,11 @@ class SurfaceProblem(Optimizable):
             dtf_list = MPI.COMM_WORLD.allgather(dtf_penalty)
             res_dict[ 'toroidal flux'] = sum(tf_list)
             dres_dict['toroidal flux'] = sum(dtf_list)
-        
+
+        if self.magnetic_well_weight is not None:
+            dJ_dV_local = [Jtemp.dJ_by_dvolume() for Jtemp in self.J_toroidal_flux]
+            dJ_dV = [0]+[temp for dJ_list in MPI.COMM_WORLD.allgather(dJ_dV_local) for temp in dJ_list]
+
         if self.lengthbound_weight is not None: 
             res_dict[ 'lengthbound'] = self.lengthbound_weight * 0.5 * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold])**2
             dres_dict['lengthbound'] = self.lengthbound_weight * np.max([0, sum(J3.J() for J3 in J_coil_lengths)-self.lengthbound_threshold]) * sum(J3.dJ(partials=True)(self) for J3 in J_coil_lengths)
