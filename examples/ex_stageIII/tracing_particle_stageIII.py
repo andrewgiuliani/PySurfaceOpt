@@ -11,6 +11,30 @@ import simsoptpp as sopp
 import pysurfaceopt as pys
 from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, BoozerResidual, NonQuasiAxisymmetricRatio, Iotas, Volume, Area, Aspect_ratio
 
+
+def minor_radius(surface):
+    # see explanation for Surface.aspect_ratio in https://github.com/hiddenSymmetries/simsopt/blob/master/src/simsopt/geo/surface.py
+    xyz = surface.gamma()
+    x2y2 = xyz[:, :, 0]**2 + xyz[:, :, 1]**2
+    dgamma1 = surface.gammadash1()
+    dgamma2 = surface.gammadash2()
+
+    # compute the average cross sectional area
+    J = np.zeros((xyz.shape[0], xyz.shape[1], 2, 2))
+    J[:, :, 0, 0] = (xyz[:, :, 0] * dgamma1[:, :, 1] - xyz[:, :, 1] * dgamma1[:, :, 0])/x2y2
+    J[:, :, 0, 1] = (xyz[:, :, 0] * dgamma2[:, :, 1] - xyz[:, :, 1] * dgamma2[:, :, 0])/x2y2
+    J[:, :, 1, 0] = 0.
+    J[:, :, 1, 1] = 1.
+
+    detJ = np.linalg.det(J)
+    Jinv = np.linalg.inv(J)
+
+    dZ_dtheta = dgamma1[:, :, 2] * Jinv[:, :, 0, 1] + dgamma2[:, :, 2] * Jinv[:, :, 1, 1]
+    mean_cross_sectional_area = np.abs(np.mean(np.sqrt(x2y2) * dZ_dtheta * detJ))/(2 * np.pi)
+
+    R_minor = np.sqrt(mean_cross_sectional_area / np.pi)
+    return R_minor
+
 try:
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
@@ -89,14 +113,14 @@ s_inner = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=n
 s_spawn = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 s_outer = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 
-s_inner.x=boozer_surface_inner.surface.x*1.7
-s_spawn.x=boozer_surface_spawn.surface.x*1.7
-s_outer.x=boozer_surface_outer.surface.x*1.7
+minor_radius_outer = minor_radius(s_outer)
+s_inner.x=boozer_surface_inner.surface.x*1.7/minor_radius_outer
+s_spawn.x=boozer_surface_spawn.surface.x*1.7/minor_radius_outer
+s_outer.x=boozer_surface_outer.surface.x*1.7/minor_radius_outer
 
 s_inner.to_vtk(OUT_DIR+"inner_surface")
 s_spawn.to_vtk(OUT_DIR+"spawn_surface")
 s_outer.to_vtk(OUT_DIR+"outer_surface")
-
 
 
 
@@ -112,7 +136,7 @@ This examples demonstrate how to use SIMSOPT to compute guiding center
 trajectories of particles
 """
 for c in base_curves:
-    c.x=c.x*1.7
+    c.x=c.x*1.7/minor_radius_outer
 
 bs = BiotSavart(coils)
 bs.set_points(s_inner.gamma().reshape(-1,3))
