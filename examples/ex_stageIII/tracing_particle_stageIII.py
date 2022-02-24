@@ -97,6 +97,7 @@ thetas = np.linspace(0, 1, 2*mpol+1, endpoint=False)
 s_spawn = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 s_outer = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 
+# rescale the minor radius of outermost surfaces to be 1.7
 minor_radius_outer = minor_radius(boozer_surface_outer.surface)
 s_spawn.x=boozer_surface_spawn.surface.x*1.7/minor_radius_outer
 s_outer.x=boozer_surface_outer.surface.x*1.7/minor_radius_outer
@@ -106,10 +107,6 @@ s_outer.to_vtk(OUT_DIR+"outer_surface")
 
 
 
-print("Running 1_Simple/tracing_particle.py")
-print("====================================")
-# check whether we're in CI, in that case we make the run a bit cheaper
-ci = "CI" in os.environ and os.environ['CI'].lower() in ['1', 'true']
 nparticles = 100
 degree = 5
 
@@ -172,8 +169,4 @@ def trace_particles(bfield, label, mode='gc_vac'):
 print('Error in B', bsh.estimate_error_B(1000), flush=True)
 print('Error in AbsB', bsh.estimate_error_GradAbsB(1000), flush=True)
 trace_particles(bsh, 'bsh', 'gc_vac')
-# trace_particles(bsh, 'bsh', 'full')
-# trace_particles(bs, 'bs', 'gc')
 
-print("End of 1_Simple/tracing_particle.py")
-print("====================================")
