@@ -60,7 +60,7 @@ logger.setLevel(1)
 OUT_DIR = "./output/"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-length=24
+length=18
 assert length==18 or length==20 or length==22 or length==24
 problem = pys.get_stageIII_problem(coilset='nine', length=length)
 boozer_surface_list = [problem.boozer_surface_list[4], problem.boozer_surface_list[8]]
@@ -115,8 +115,9 @@ if comm.rank==0:
     print("Starting to particle trace...")    
 
 
-nparticles = 20000
+nparticles = 2
 degree = 3
+
 
 """
 This examples demonstrate how to use SIMSOPT to compute guiding center

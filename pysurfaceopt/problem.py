@@ -443,8 +443,11 @@ class SurfaceProblem(Optimizable):
                 np.savetxt(self.outdir + f"x_{self.iter}.txt", self.x.reshape((1,-1)))
 
     def recompute_bell(self, parent=None):
-        self.update()
+        self.res=None
+        self.dres=None
     def J(self, verbose=False):
-        return self.res
+        if self._J is None:
+            self.update()
     def dJ(self, verbose=False):
-        return self.dres
+        if self._dJ is None:
+            self.update()

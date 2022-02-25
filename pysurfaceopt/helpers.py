@@ -68,7 +68,7 @@ def get_stageIII_data(coilset='nine', length=18):
 
     return (base_curves, base_currents)
 
-def get_stageIII_problem(coilset='nine', length=18, verbose=False):
+def get_stageIII_problem(coilset='nine', length=18, verbose=False, output=False):
     ts_dict={18:'1639707710.6463501', 20:'1639796640.5101252', 22:'1642522947.7884622', 24: '1642523475.5701194'}
     mr = np.sqrt(0.5678672050465505/ ( 2 * np.pi**2 ) )
     vol_list = -2. * np.pi**2 * np.linspace(0.01,mr, 9 if coilset=='nine' else 5) ** 2
@@ -171,7 +171,7 @@ def get_stageIII_problem(coilset='nine', length=18, verbose=False):
                              minimum_distance=MIN_DIST, kappa_max=KAPPA_MAX, lengthbound_threshold=LENGTHBOUND,
                              msc_max=MSC_MAX, msc_weight=MSC_WEIGHT,
                              distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
-                             outdir_append="")
+                             outdir_append="", output=output)
     return problem
 
 
