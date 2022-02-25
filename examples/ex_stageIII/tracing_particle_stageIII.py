@@ -60,13 +60,12 @@ logger.setLevel(1)
 OUT_DIR = "./output/"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-
-length=18
+length=24
 assert length==18 or length==20 or length==22 or length==24
-problem = pys.get_stageIII_problem(coilset=coilset, length=length)
-boozer_surface_list = problem.boozer_surface_list
-base_curves = problem.base_curves
-base_currents = problem.base_currents
+problem = pys.get_stageIII_problem(coilset='nine', length=length)
+boozer_surface_list = [problem.boozer_surface_list[4], problem.boozer_surface_list[8]]
+base_curves = problem._base_curves
+base_currents = problem._base_currents
 coils = problem.coils
 
 bs_tf_list = [BiotSavart(coils) for bs in boozer_surface_list]
@@ -77,7 +76,7 @@ ar_list=[ar.J() for ar in J_aspect_ratio]
 
 print("compute the 0.25 surface")
 # compute the s=0.25 surface
-vol_dict={18:-0.14036}
+vol_dict={18:-0.14, 20:-0.1402, 22:-0.1402, 24:-0.1402}
 boozer_surface_spawn = boozer_surface_list[0]
 tf_spawn = J_toroidal_flux[0]
 iota0=boozer_surface_spawn.res['iota']
