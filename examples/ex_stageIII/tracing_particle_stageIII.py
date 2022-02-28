@@ -6,7 +6,7 @@ from simsopt.field.coil import coils_via_symmetries
 from simsopt.field.tracing import trace_particles_starting_on_surface, SurfaceClassifier, \
     particles_to_vtk, LevelsetStoppingCriterion, plot_poincare_data
 from simsopt.geo.curve import curves_to_vtk
-from simsopt.util.constants import ALPHA_PARTICLE_MASS, ALPHA_PARTICLE_CHARGE, ONE_EV
+from simsopt.util.constants import ALPHA_PARTICLE_MASS, ALPHA_PARTICLE_CHARGE, ONE_EV, FUSION_ALPHA_PARTICLE_ENERGY
 import simsoptpp as sopp
 import pysurfaceopt as pys
 from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, BoozerResidual, NonQuasiAxisymmetricRatio, Iotas, Volume, Area, Aspect_ratio
@@ -108,14 +108,17 @@ minor_radius_outer = minor_radius(boozer_surface_outer.surface)
 s_spawn.x=boozer_surface_spawn.surface.x*1.7/minor_radius_outer
 s_outer.x=boozer_surface_outer.surface.x*1.7/minor_radius_outer
 
-comm.Barrier()
-if comm.rank==0:
-    s_spawn.to_vtk(OUT_DIR+"spawn_surface")
-    s_outer.to_vtk(OUT_DIR+"outer_surface")
-    print("Starting to particle trace...")    
+#comm.Barrier()
+#if comm.rank==0:
+#    s_spawn.to_vtk(OUT_DIR+"spawn_surface")
+#    s_outer.to_vtk(OUT_DIR+"outer_surface")
+#    print("Starting to particle trace...")    
 
 
-nparticles = 2
+#nparticles = 20
+
+nparticles = 15240
+#nparticles = 20480
 degree = 3
 
 
@@ -162,10 +165,11 @@ bsh = InterpolatedField(
 
 def trace_particles(bfield, label, mode='gc_vac'):
     t1 = time.time()
-    phis = [(i/4)*(2*np.pi/nfp) for i in range(4)]
+    #phis = [(i/4)*(2*np.pi/nfp) for i in range(4)]
+    phis=[]
     gc_tys, gc_phi_hits = trace_particles_starting_on_surface(
         s_spawn, bfield, nparticles, tmax=TMAX, seed=1, mass=ALPHA_PARTICLE_MASS, charge=ALPHA_PARTICLE_CHARGE,
-        Ekin=3.5e6*ONE_EV, umin=-1, umax=+1, comm=comm,
+        Ekin=FUSION_ALPHA_PARTICLE_ENERGY, umin=-1, umax=+1, comm=comm,
         phis=phis, tol=1e-10,
         stopping_criteria=[LevelsetStoppingCriterion(sc_particle.dist)], mode=mode,
         forget_exact_path=True)

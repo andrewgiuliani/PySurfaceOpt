@@ -205,10 +205,10 @@ def compute_surfaces_in_NCSX(mpol=10, ntor=10, exact=True, Nt_coils=12, write_to
     if vol_list is None:
         vol_list = np.linspace(-0.162, -3.3, 10)
     curr_sum = np.sum([curr.x for curr in base_currents])
-    G0 = 2. * np.pi * curr_sum * (4 * np.pi * 10**(-7) / (2 * np.pi))
+    G0 = 2. * np.pi * 2* nfp * curr_sum / (2 * np.pi)
     boozer_surface_list = []
     boozer_surface_dict = []
-
+    
     backup_dofs = s.get_dofs()
     backup_iota = iota0
     backup_G = G0
@@ -464,3 +464,198 @@ def is_self_intersecting(cs):
     Point, Contour = context.point_cls, context.contour_cls
     contour = Contour([ Point(R[i], Z[i]) for i in range(cs.shape[0]) ])
     return contour_self_intersects(contour)
+
+
+#def compute_surfaces_continuation(boozer_surface, coils, vol_list, add_res_list=[], tol=1e-13, weight=100., maxiter=60):
+#
+#    backup_dofs = boozer_surface.surface.get_dofs()
+#    backup_iota = boozer_surface.res['iota']
+#    backup_G = boozer_surface.res['G']
+#  
+#    res_list = ['label', 'ratio', 'iota'] + add_res_list
+#    res_dict={}
+#    for r in res_list:
+#        res_dict[r]=[]
+#
+#    for idx,target in enumerate(vol_list):
+#        try:
+#            boozer_surface.surface.set_dofs(backup_dofs)
+#            iota0 = backup_iota
+#            G0 = backup_G
+#
+#            boozer_surface.targetlabel = target
+#            if boozer_surface.res['type'] == 'exact':
+#                res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=maxiter,iota=iota0,G=G0)
+#                r, = boozer_surface_residual(boozer_surface.surface, res['iota'], res['G'], boozer_surface.bs, derivatives=0)
+#                res_norm= np.linalg.norm(r, ord=np.inf)
+#                print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={boozer_surface.label.J():.3f}, |rel. label error|={np.abs(boozer_surface.label.J()-target)/np.abs(target):.3e}, ||residual||_inf={res_norm:.3e}")
+#            else:
+#                res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=tol, maxiter=maxiter, constraint_weight=weight, iota=iota0, G=G0, method='manual')
+#                # if LM didn't work, try Newton 
+#                if not res['success']:
+#                    print("failed, trying Newton")
+#                    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=tol, maxiter=maxiter, constraint_weight=weight, iota=res['iota'], G=res['G'])
+#                r, J= boozer_surface_residual(boozer_surface.surface, res['iota'], res['G'], boozer_surface.bs, derivatives=1)
+#                res_norm = np.linalg.norm(r)
+#                print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={boozer_surface.label.J():.3f}, |rel. label error|={np.abs(boozer_surface.label.J()-target)/np.abs(target):.3e}, ||residual||_2={np.linalg.norm(r):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+#            
+#            if not res['success']:
+#                continue
+#            if is_self_intersecting(boozer_surface.surface.cross_section(0, thetas=200)):
+#                print("Surface is self-intersecting!")
+#           
+#
+#            backup_dofs = boozer_surface.surface.get_dofs().copy()
+#            backup_iota = res['iota']
+#            backup_G = res['G']
+#            
+#            def compute_non_quasisymmetry_L2(in_surface, in_coils):
+#                bs = BiotSavart(in_coils)
+#                phis = np.linspace(0, 1/in_surface.nfp, 200, endpoint=False)
+#                thetas = np.linspace(0, 1., 200, endpoint=False)
+#                s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+#                s.set_dofs(in_surface.get_dofs())
+#
+#                x = s.gamma()
+#                B = bs.set_points(x.reshape((-1, 3))).B().reshape(x.shape)
+#                mod_B = np.linalg.norm(B, axis=2)
+#                n = np.linalg.norm(s.normal(), axis=2)
+#                mean_phi_mod_B = np.mean(mod_B*n, axis=0)/np.mean(n, axis=0)
+#                mod_B_QS = mean_phi_mod_B[None, :]
+#                mod_B_non_QS = mod_B - mod_B_QS
+#                non_qs = np.mean(mod_B_non_QS**2 * n)**0.5
+#                qs = np.mean(mod_B_QS**2 * n)**0.5
+#                return non_qs, qs, s.area(), mod_B 
+#            
+#            def compute_tf(in_surface, in_coils):
+#                bs_tf = BiotSavart(in_coils)
+#                phis = np.linspace(0, 1/in_surface.nfp, 200, endpoint=False)
+#                thetas = np.linspace(0, 1., 200, endpoint=False)
+#                s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+#                s.set_dofs(in_surface.get_dofs())
+#                tf = ToroidalFlux(s, bs_tf)
+#                return tf.J()
+#
+#            
+#            non_qs, qs, area, absB = compute_non_quasisymmetry_L2(boozer_surface.surface, coils)
+#
+#            res_dict['label'].append( np.abs(boozer_surface.label.J() ))
+#            res_dict['iota'].append( np.abs(boozer_surface.res['iota']))
+#            res_dict['ratio'].append(non_qs/qs)
+#            if 'res' in res_dict:
+#                res_dict['res'].append(res_norm)
+#            if 'dofs' in res_dict:
+#                res_dict['dofs'].append( boozer_surface.surface.get_dofs() )
+#            if 'tf' in res_dict:
+#                tf = compute_tf(boozer_surface.surface, coils)
+#                res_dict['tf'].append(tf)
+#            if 'absB' in res_dict:
+#                res_dict['absB'].append(absB)
+#            if 'ratio_nonqs_area' in res_dict:
+#                res_dict['ratio_nonqs_area'].append(non_qs/(area**0.5))
+#        except Exception as e:
+#            print("Didn't converge", e)
+#    return res_dict
+
+def compute_surfaces_continuation(boozer_surface, coils, label, add_res_list=[], tol=1e-13, weight=100., maxiter=60):
+
+    backup_dofs = boozer_surface.surface.get_dofs()
+    backup_iota = boozer_surface.res['iota']
+    backup_G = boozer_surface.res['G']
+  
+    res_list = ['label', 'ratio', 'iota'] + add_res_list
+    res_dict={}
+    for r in res_list:
+        res_dict[r]=[]
+    
+    if type(label) is list:
+        num = len(label)
+    else:
+        num = label
+
+    for idx in range(num):
+        try:
+            boozer_surface.surface.set_dofs(backup_dofs)
+            iota0 = backup_iota
+            G0 = backup_G
+            
+            if type(label) is list:
+                boozer_surface.targetlabel = label[idx]
+            else:
+                boozer_surface.surface.extend_via_normal(-0.005)
+                boozer_surface.targetlabel = Volume(boozer_surface.surface).J()
+                target = Volume(boozer_surface.surface).J()
+
+            if boozer_surface.res['type'] == 'exact':
+                res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=maxiter,iota=iota0,G=G0)
+                r, = boozer_surface_residual(boozer_surface.surface, res['iota'], res['G'], boozer_surface.bs, derivatives=0)
+                res_norm= np.linalg.norm(r, ord=np.inf)
+                print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={boozer_surface.label.J():.3f}, |rel. label error|={np.abs(boozer_surface.label.J()-target)/np.abs(target):.3e}, ||residual||_inf={res_norm:.3e}")
+            else:
+                res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=tol, maxiter=maxiter, constraint_weight=weight, iota=iota0, G=G0, method='manual')
+                # if LM didn't work, try Newton 
+                if not res['success']:
+                    print("failed, trying Newton")
+                    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=tol, maxiter=maxiter, constraint_weight=weight, iota=res['iota'], G=res['G'])
+                r, J= boozer_surface_residual(boozer_surface.surface, res['iota'], res['G'], boozer_surface.bs, derivatives=1)
+                res_norm = np.linalg.norm(r)
+                print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={boozer_surface.label.J():.3f}, |rel. label error|={np.abs(boozer_surface.label.J()-target)/np.abs(target):.3e}, ||residual||_2={np.linalg.norm(r):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+            
+            if not res['success']:
+                continue
+            if is_self_intersecting(boozer_surface.surface.cross_section(0, thetas=200)):
+                print("Surface is self-intersecting!")
+           
+
+            backup_dofs = boozer_surface.surface.get_dofs().copy()
+            backup_iota = res['iota']
+            backup_G = res['G']
+            
+            def compute_non_quasisymmetry_L2(in_surface, in_coils):
+                bs = BiotSavart(in_coils)
+                phis = np.linspace(0, 1/in_surface.nfp, 200, endpoint=False)
+                thetas = np.linspace(0, 1., 200, endpoint=False)
+                s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+                s.set_dofs(in_surface.get_dofs())
+
+                x = s.gamma()
+                B = bs.set_points(x.reshape((-1, 3))).B().reshape(x.shape)
+                mod_B = np.linalg.norm(B, axis=2)
+                n = np.linalg.norm(s.normal(), axis=2)
+                mean_phi_mod_B = np.mean(mod_B*n, axis=0)/np.mean(n, axis=0)
+                mod_B_QS = mean_phi_mod_B[None, :]
+                mod_B_non_QS = mod_B - mod_B_QS
+                non_qs = np.mean(mod_B_non_QS**2 * n)**0.5
+                qs = np.mean(mod_B_QS**2 * n)**0.5
+                return non_qs, qs, s.area(), mod_B 
+            
+            def compute_tf(in_surface, in_coils):
+                bs_tf = BiotSavart(in_coils)
+                phis = np.linspace(0, 1/in_surface.nfp, 200, endpoint=False)
+                thetas = np.linspace(0, 1., 200, endpoint=False)
+                s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+                s.set_dofs(in_surface.get_dofs())
+                tf = ToroidalFlux(s, bs_tf)
+                return tf.J()
+
+            
+            non_qs, qs, area, absB = compute_non_quasisymmetry_L2(boozer_surface.surface, coils)
+
+            res_dict['label'].append( np.abs(boozer_surface.label.J() ))
+            res_dict['iota'].append( np.abs(boozer_surface.res['iota']))
+            res_dict['ratio'].append(non_qs/qs)
+            if 'res' in res_dict:
+                res_dict['res'].append(res_norm)
+            if 'dofs' in res_dict:
+                res_dict['dofs'].append( boozer_surface.surface.get_dofs() )
+            if 'tf' in res_dict:
+                tf = compute_tf(boozer_surface.surface, coils)
+                res_dict['tf'].append(tf)
+            if 'absB' in res_dict:
+                res_dict['absB'].append(absB)
+            if 'ratio_nonqs_area' in res_dict:
+                res_dict['ratio_nonqs_area'].append(non_qs/(area**0.5))
+        except Exception as e:
+            print("Didn't converge", e)
+    return res_dict
+
