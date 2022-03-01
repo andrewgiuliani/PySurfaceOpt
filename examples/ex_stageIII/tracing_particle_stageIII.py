@@ -98,8 +98,10 @@ mpol = 10
 ntor = 10
 stellsym = True
 nfp = 2
-phis = np.linspace(0, 1, nfp*2*ntor+1, endpoint=False)
-thetas = np.linspace(0, 1, 2*mpol+1, endpoint=False)
+nphi = 100
+ntheta = 100
+phis = np.linspace(0, 1, nphi, endpoint=False)
+thetas = np.linspace(0, 1, ntheta, endpoint=False)
 s_spawn = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 s_outer = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 
@@ -108,18 +110,15 @@ minor_radius_outer = minor_radius(boozer_surface_outer.surface)
 s_spawn.x=boozer_surface_spawn.surface.x*1.7/minor_radius_outer
 s_outer.x=boozer_surface_outer.surface.x*1.7/minor_radius_outer
 
-#comm.Barrier()
-#if comm.rank==0:
-#    s_spawn.to_vtk(OUT_DIR+"spawn_surface")
-#    s_outer.to_vtk(OUT_DIR+"outer_surface")
-#    print("Starting to particle trace...")    
+comm.Barrier()
+if comm.rank==0:
+    s_spawn.to_vtk(OUT_DIR+"spawn_surface")
+    s_outer.to_vtk(OUT_DIR+"outer_surface")
+    print("Starting to particle trace...")    
 
-
-#nparticles = 20
 
 nparticles = 15240
-#nparticles = 20480
-degree = 3
+degree = 5
 
 
 """
@@ -129,31 +128,31 @@ trajectories of particles
 for c in base_curves:
     c.x=c.x*1.7/minor_radius_outer
 
-bs = BiotSavart(coils)
-bs.set_points(s_outer.gamma().reshape(-1,3))
-Bfield=bs.B()
-modB = np.linalg.norm(Bfield, axis=-1)
-avgB = np.mean(modB)
+Bfield = BiotSavart(coils)
+Bfield.set_points(s_outer.gamma().reshape(-1,3))
+B_on_surface = Bfield.set_points(s_outer.gamma().reshape((-1, 3))).AbsB()
+norm = np.linalg.norm(s_outer.normal().reshape((-1, 3)), axis=1)
+meanb = np.mean(B_on_surface * norm)/np.mean(norm)
 for curr in base_currents:
-    curr.x=curr.x*5.9/avgB
+    curr.x=curr.x*5.9/meanb
 
 
-bs = BiotSavart(coils)
-bs.set_points(s_outer.gamma().reshape(-1,3))
-Bfield=bs.B()
-modB = np.linalg.norm(Bfield, axis=-1)
-avgB = np.mean(modB)
-
+Bfield = BiotSavart(coils)
+Bfield.set_points(s_outer.gamma().reshape(-1,3))
+B_on_surface = Bfield.set_points(s_outer.gamma().reshape((-1, 3))).AbsB()
+norm = np.linalg.norm(s_outer.normal().reshape((-1, 3)), axis=1)
+meanb = np.mean(B_on_surface * norm)/np.mean(norm)
 
 if comm.rank==0:
-    print("Mean(|B|) on outer surface =", avgB)
+    print("Mean(|B|) on outer surface =", meanb)
     print("Minor radius of outer surface =", minor_radius(s_outer))
 
 sc_particle = SurfaceClassifier(s_outer, h=0.1, p=2)
-n = 32
+n = 50
 rs = np.linalg.norm(s_outer.gamma()[:, :, 0:2], axis=2)
 zs = s_outer.gamma()[:, :, 2]
 
+bs = BiotSavart(coils)
 nfp=2
 rrange = (np.min(rs), np.max(rs), n)
 phirange = (0, 2*np.pi/2, n*2)
@@ -165,7 +164,6 @@ bsh = InterpolatedField(
 
 def trace_particles(bfield, label, mode='gc_vac'):
     t1 = time.time()
-    #phis = [(i/4)*(2*np.pi/nfp) for i in range(4)]
     phis=[]
     gc_tys, gc_phi_hits = trace_particles_starting_on_surface(
         s_spawn, bfield, nparticles, tmax=TMAX, seed=1, mass=ALPHA_PARTICLE_MASS, charge=ALPHA_PARTICLE_CHARGE,
@@ -175,9 +173,6 @@ def trace_particles(bfield, label, mode='gc_vac'):
         forget_exact_path=True)
     t2 = time.time()
     print(f"Time for particle tracing={t2-t1:.3f}s. Num steps={sum([len(l) for l in gc_tys])//nparticles}", flush=True)
-    #particles_to_vtk(gc_tys, OUT_DIR + f'particles_{label}_{mode}_{comm.rank}')
-    #plot_poincare_data(gc_phi_hits, phis, OUT_DIR + f'poincare_particle_{label}_loss_{comm.rank}.png', mark_lost=True)
-    #plot_poincare_data(gc_phi_hits, phis, OUT_DIR + f'poincare_particle_{label}_{comm.rank}.png', mark_lost=False)
     return gc_tys
 def compute_error_on_surface(s):
     bsh.set_points(s.gamma().reshape((-1, 3)))
@@ -189,12 +184,12 @@ def compute_error_on_surface(s):
     print("Mean(|B|) on surface   %s" % np.mean(bs.AbsB()))
     print("B    errors on surface %s" % np.sort(np.abs(B-Bh).flatten()))
     print("∇|B| errors on surface %s" % np.sort(np.abs(dB-dBh).flatten()))
-
 print("About to compute error")
 compute_error_on_surface(s_spawn)
 compute_error_on_surface(s_outer)
 print("", flush=True)
 
+#paths_gc_h = trace_particles(bs, 'bs', 'gc_vac')
 paths_gc_h = trace_particles(bsh, 'bsh', 'gc_vac')
 
 comm.Barrier()
@@ -204,4 +199,3 @@ if comm.rank==0:
     def get_lost_or_not(paths):
         return np.asarray([p[-1, 0] < TMAX-1e-15 for p in paths]).astype(int)
     print(f"{np.mean(get_lost_or_not(paths_gc_h))*100}%")
-
