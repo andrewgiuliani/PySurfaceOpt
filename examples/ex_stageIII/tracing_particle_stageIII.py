@@ -63,10 +63,11 @@ os.makedirs(OUT_DIR, exist_ok=True)
 length=18
 assert length==18 or length==20 or length==22 or length==24
 problem = pys.get_stageIII_problem(coilset='nine', length=length)
-boozer_surface_list = [problem.boozer_surface_list[4], problem.boozer_surface_list[8]]
+boozer_surface_list = [problem.boozer_surface_list[0], problem.boozer_surface_list[4], problem.boozer_surface_list[8]]
 base_curves = problem._base_curves
 base_currents = problem._base_currents
 coils = problem.coils
+
 
 bs_tf_list = [BiotSavart(coils) for bs in boozer_surface_list]
 J_toroidal_flux = [ToroidalFlux(boozer_surface, bs_tf) for boozer_surface, bs_tf in zip(boozer_surface_list, bs_tf_list)]
@@ -74,24 +75,45 @@ J_aspect_ratio = [Aspect_ratio(boozer_surface.surface) for boozer_surface in boo
 tf_list=[abs(tf.J()) for tf in J_toroidal_flux]
 ar_list=[ar.J() for ar in J_aspect_ratio]
 
+
+print("compute a surface close to the magnetic axis to normalize the field")
+boozer_surface_inner = boozer_surface_list[0]
+tf_spawn = J_toroidal_flux[0]
+iota0=boozer_surface_inner.res['iota']
+G0=boozer_surface_inner.res['G']
+boozer_surface_inner.targetlabel = 1e-3
+boozer_surface_inner.recompute_bell()
+tf_spawn.recompute_bell()
+res = boozer_surface_inner.solve_residual_equation_exactly_newton(tol=1e-13, maxiter=30,iota=iota0,G=G0)
+assert res['success']
+tf_list=[abs(tf.J()) for tf in J_toroidal_flux]
+ar_list=[ar.J() for ar in J_aspect_ratio]
+print("tf:",tf_list)
+print("ar:",ar_list)
+
+
+
 print("compute the 0.25 surface")
 # compute the s=0.25 surface
 vol_dict={18:-0.14, 20:-0.1402, 22:-0.1402, 24:-0.1402}
-boozer_surface_spawn = boozer_surface_list[0]
-tf_spawn = J_toroidal_flux[0]
+boozer_surface_spawn = boozer_surface_list[1]
+boozer_surface_outer=boozer_surface_list[2]
+tf_spawn = J_toroidal_flux[1]
 iota0=boozer_surface_spawn.res['iota']
 G0=boozer_surface_spawn.res['G']
 boozer_surface_spawn.targetlabel = vol_dict[length]
 boozer_surface_spawn.recompute_bell()
 tf_spawn.recompute_bell()
 res = boozer_surface_spawn.solve_residual_equation_exactly_newton(tol=1e-13, maxiter=30,iota=iota0,G=G0)
+assert res['success']
 tf_list=[abs(tf.J()) for tf in J_toroidal_flux]
 ar_list=[ar.J() for ar in J_aspect_ratio]
+mr_list=[minor_radius(s) for s in [boozer_surface_spawn.surface, boozer_surface_outer.surface]]
 max_tf = max(tf_list)
 print("new max tf",max_tf)
 print("tf:",tf_list/max_tf)
 print("ar:",ar_list)
-boozer_surface_outer=boozer_surface_list[1]
+print("mr:",mr_list)
 
 # convert these surfaces to full period surfaces
 mpol = 10
@@ -102,53 +124,58 @@ nphi = 100
 ntheta = 100
 phis = np.linspace(0, 1, nphi, endpoint=False)
 thetas = np.linspace(0, 1, ntheta, endpoint=False)
+s_inner = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 s_spawn = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 s_outer = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
 
-# rescale the minor radius of outermost surfaces to be 1.7
-minor_radius_outer = minor_radius(boozer_surface_outer.surface)
-s_spawn.x=boozer_surface_spawn.surface.x*1.7/minor_radius_outer
-s_outer.x=boozer_surface_outer.surface.x*1.7/minor_radius_outer
+s_inner.x=boozer_surface_inner.surface.x
+s_spawn.x=boozer_surface_spawn.surface.x
+s_outer.x=boozer_surface_outer.surface.x
+
+# rescale the minor radius of outermost surface to be 1.7
+minor_radius_outer = minor_radius(s_outer)
+s_inner.x=boozer_surface_inner.surface.x*(1.7/minor_radius_outer)
+s_spawn.x=boozer_surface_spawn.surface.x*(1.7/minor_radius_outer)
+s_outer.x=boozer_surface_outer.surface.x*(1.7/minor_radius_outer)
 
 comm.Barrier()
 if comm.rank==0:
+    s_inner.to_vtk(OUT_DIR+"inner_surface")
     s_spawn.to_vtk(OUT_DIR+"spawn_surface")
     s_outer.to_vtk(OUT_DIR+"outer_surface")
-    print("Starting to particle trace...")    
 
 
-nparticles = 15240
-degree = 5
-
-
-"""
-This examples demonstrate how to use SIMSOPT to compute guiding center
-trajectories of particles
-"""
 for c in base_curves:
     c.x=c.x*1.7/minor_radius_outer
 
 Bfield = BiotSavart(coils)
-Bfield.set_points(s_outer.gamma().reshape(-1,3))
-B_on_surface = Bfield.set_points(s_outer.gamma().reshape((-1, 3))).AbsB()
-norm = np.linalg.norm(s_outer.normal().reshape((-1, 3)), axis=1)
+Bfield.set_points(s_inner.gamma().reshape(-1,3))
+B_on_surface = Bfield.set_points(s_inner.gamma().reshape((-1, 3))).AbsB()
+norm = np.linalg.norm(s_inner.normal().reshape((-1, 3)), axis=1)
 meanb = np.mean(B_on_surface * norm)/np.mean(norm)
 for curr in base_currents:
-    curr.x=curr.x*5.9/meanb
+    curr.x=curr.x*5.685257882303897/meanb
 
 
 Bfield = BiotSavart(coils)
-Bfield.set_points(s_outer.gamma().reshape(-1,3))
-B_on_surface = Bfield.set_points(s_outer.gamma().reshape((-1, 3))).AbsB()
-norm = np.linalg.norm(s_outer.normal().reshape((-1, 3)), axis=1)
+Bfield.set_points(s_inner.gamma().reshape(-1,3))
+B_on_surface = Bfield.set_points(s_inner.gamma().reshape((-1, 3))).AbsB()
+norm = np.linalg.norm(s_inner.normal().reshape((-1, 3)), axis=1)
 meanb = np.mean(B_on_surface * norm)/np.mean(norm)
 
-if comm.rank==0:
-    print("Mean(|B|) on outer surface =", meanb)
-    print("Minor radius of outer surface =", minor_radius(s_outer))
 
-sc_particle = SurfaceClassifier(s_outer, h=0.1, p=2)
+
+if comm.rank==0:
+    print("Mean(|B|) on inner surface =", meanb)
+    print("Initial minor radius of outer surface =", minor_radius_outer)
+    print("Minor radius of outer surface =", minor_radius(s_outer))
+    print("Starting to particle trace...")    
+
+
 n = 50
+degree = 5
+nparticles = 30000
+sc_particle = SurfaceClassifier(s_outer, h=0.1, p=2)
 rs = np.linalg.norm(s_outer.gamma()[:, :, 0:2], axis=2)
 zs = s_outer.gamma()[:, :, 2]
 
@@ -164,11 +191,10 @@ bsh = InterpolatedField(
 
 def trace_particles(bfield, label, mode='gc_vac'):
     t1 = time.time()
-    phis=[]
     gc_tys, gc_phi_hits = trace_particles_starting_on_surface(
         s_spawn, bfield, nparticles, tmax=TMAX, seed=1, mass=ALPHA_PARTICLE_MASS, charge=ALPHA_PARTICLE_CHARGE,
         Ekin=FUSION_ALPHA_PARTICLE_ENERGY, umin=-1, umax=+1, comm=comm,
-        phis=phis, tol=1e-10,
+        phis=[], tol=1e-11,
         stopping_criteria=[LevelsetStoppingCriterion(sc_particle.dist)], mode=mode,
         forget_exact_path=True)
     t2 = time.time()
