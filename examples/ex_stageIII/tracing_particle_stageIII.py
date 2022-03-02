@@ -86,12 +86,6 @@ boozer_surface_inner.recompute_bell()
 tf_spawn.recompute_bell()
 res = boozer_surface_inner.solve_residual_equation_exactly_newton(tol=1e-13, maxiter=30,iota=iota0,G=G0)
 assert res['success']
-tf_list=[abs(tf.J()) for tf in J_toroidal_flux]
-ar_list=[ar.J() for ar in J_aspect_ratio]
-print("tf:",tf_list)
-print("ar:",ar_list)
-
-
 
 print("compute the 0.25 surface")
 # compute the s=0.25 surface
