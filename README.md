@@ -22,8 +22,6 @@ Refer to the SIMSOPT installation instructions [here](https://simsopt.readthedoc
 
     pip install -e .
 
-## Examples
-
 ## How are things structured?
 
 The different penalty terms of the optimization problem are implemented using the optimizable framework in SIMSOPT for efficient caching.
