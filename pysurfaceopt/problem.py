@@ -446,8 +446,10 @@ class SurfaceProblem(Optimizable):
         self.res=None
         self.dres=None
     def J(self, verbose=False):
-        if self._J is None:
+        if self.res is None:
             self.update()
+        return self.res
     def dJ(self, verbose=False):
-        if self._dJ is None:
+        if self.dres is None:
             self.update()
+        return self.dres

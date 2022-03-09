@@ -69,8 +69,8 @@ problem.callback(coeffs)
 
 def J_scipy(dofs,*args):
     problem.x = dofs
-    J = problem.res
-    dJ = problem.dres
+    J = problem.J()
+    dJ = problem.dJ()
     return J, dJ
 
 from scipy.optimize import minimize

@@ -8,7 +8,7 @@ comm = MPI.COMM_WORLD
 rank = comm.rank
 
 
-boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[rank], exact=True, time_stamp='1636472072.192064', tol=1e-13)
+boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0], exact=True, time_stamp='1636472072.192064', tol=1e-13)
 # you can either fix the current in a single coil or introduce a toroidal flux constraint to prevent
 # currents from going to zero.  We do the former here:
 base_currents[0].fix_all()
@@ -21,17 +21,8 @@ iotas_target = [None for bs in boozer_surface_list]
 mr_target   = [None for bs in boozer_surface_list]
 J_inner_radius = MajorRadius(boozer_surface_list[0])
 
-if comm.size > 1:
-    if rank == 0:
-        mr_target[0] = J_inner_radius.J()
-        iotas_target[0] = boozer_surface_list[0].res['iota']
-    if rank == comm.size-1:
-        iotas_target[-1] = -3./7.
-else:
-    mr_target[0] = J_inner_radius.J()
-    iotas_target[0] = boozer_surface_list[0].res['iota']
-    iotas_target[-1] = -3./7.
-
+mr_target[0] = J_inner_radius.J()
+iotas_target[0] = boozer_surface_list[0].res['iota']
 ############################################################################
 ## SET THE INITIAL WEIGHTS, TARGET CURVATURE AND TARGET TOTAL COIL LENGTH ##
 ############################################################################
@@ -52,7 +43,6 @@ ALEN_WEIGHT = 1e-4
 
 IOTAS_TARGET_WEIGHT = 1.
 MR_WEIGHT = 1.
-RES_WEIGHT = 1e-3
 
 problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, coils,
                              iotas_target=iotas_target, major_radii_targets=mr_target, 
@@ -60,7 +50,6 @@ problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, co
                              minimum_distance=MIN_DIST, kappa_max=KAPPA_MAX, lengthbound_threshold=LENGTHBOUND,
                              msc_max=MSC_MAX, msc_weight=MSC_WEIGHT,
                              distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
-                             residual_weight=RES_WEIGHT,
                              rank=rank, outdir_append="exact")
 
 
@@ -69,8 +58,8 @@ problem.callback(coeffs)
 
 def J_scipy(dofs,*args):
     problem.x = dofs
-    J = problem.res
-    dJ = problem.dres
+    J = problem.J()
+    dJ = problem.dJ()
     return J, dJ
 
 from scipy.optimize import minimize
