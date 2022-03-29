@@ -81,7 +81,7 @@ def taylor_test(obj, x, order=6, h=None, verbose=False):
     
     problem.x = x
     
-    dj0 = obj.dres
+    dj0 = obj.dJ()
     djh = np.sum(dj0*h)
     if order == 1:
         shifts = [0, 1]
@@ -98,10 +98,10 @@ def taylor_test(obj, x, order=6, h=None, verbose=False):
     for i in range(10, 40):
         eps = 0.5**i
         obj.x = x + shifts[0]*eps*h
-        fd = weights[0] * obj.res
+        fd = weights[0] * obj.J()
         for i in range(1, len(shifts)):
             obj.x = x + shifts[i]*eps*h
-            fd += weights[i] * obj.res
+            fd += weights[i] * obj.J()
         err = abs(fd/eps - djh)
         print(f"eps: {eps:.6e}, adjoint deriv: {djh:.6e}, fd deriv: {fd/eps:.6e}, err: {err:.6e}, rel. err:{err/np.linalg.norm(djh):.6e}")
     obj.x = x
