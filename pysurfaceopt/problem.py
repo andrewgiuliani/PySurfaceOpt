@@ -75,59 +75,52 @@ class SurfaceProblem(Optimizable):
         
         self.msc_max = msc_max
         self.kappa_max = kappa_max
-
-        dependencies = []
         
-        dependencies+=self.J_nonQS_ratio
+        dependencies=[]
+        dependencies+=self.J_curvature+self.J_msc+self.J_arclength+self.J_coil_lengths+[self.J_distance]
+        dependencies+=self.J_nonQS_ratio+self.J_major_radii+self.J_toroidal_flux+self.J_boozer_residual+self.J_iotas
+        
         if residual_weight is None:
             self.residual_weight = None
         else:
             self.residual_weight=residual_weight
-            dependencies+=self.J_boozer_residual
         
         if lengthbound_threshold is None:
             self.lengthbound_threshold = None
         else:
             self.lengthbound_threshold = lengthbound_threshold
-            dependencies+=self.J_coil_lengths
 
         if iotas_target is None:
             self.iotas_target = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.iotas_target = iotas_target
-            dependencies+=self.J_iotas
         
         if iotas_lb is None:
             self.iotas_lb = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.iotas_lb = iotas_lb
-            dependencies+=self.J_iotas
 
         if iotas_ub is None:
             self.iotas_ub = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.iotas_ub = iotas_ub
-            dependencies+=self.J_iotas
 
         if iotas_avg_target is None:
             self.iotas_avg_target = None
         else:
             self.iotas_avg_target = iotas_avg_target
-            dependencies+=self.J_iotas
 
         if major_radii_targets is None:
             self.major_radii_targets = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.major_radii_targets = major_radii_targets
-            dependencies+=self.J_major_radii
         
         if toroidal_flux_targets is None:
             self.toroidal_flux_targets = [None for i in range(len(self.boozer_surface_list))]
         else:
             self.toroidal_flux_targets = toroidal_flux_targets
-            dependencies+=self.J_toroidal_flux
             
-        dependencies+=[self.J_distance]
+
         
         Optimizable.__init__(self, depends_on=dependencies)
         self.update()
