@@ -126,6 +126,8 @@ class SurfaceProblem(Optimizable):
         else:
             self.toroidal_flux_targets = toroidal_flux_targets
             dependencies+=self.J_toroidal_flux
+            
+        dependencies+=[self.J_distance]
         
         Optimizable.__init__(self, depends_on=dependencies)
         self.update()
