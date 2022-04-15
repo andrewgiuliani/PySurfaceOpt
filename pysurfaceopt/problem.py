@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import os
 from mpi4py import MPI
@@ -123,7 +124,7 @@ class SurfaceProblem(Optimizable):
 
         
         Optimizable.__init__(self, depends_on=dependencies)
-        self.update()
+        self.update(verbose=True)
         self.x_reference = self.x
         self.res_reference = self.res
         self.dres_reference = self.dres
@@ -173,12 +174,13 @@ class SurfaceProblem(Optimizable):
                     res['solver'] = 'NEWTON'
                 else:
                     res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-10, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
-                    res['solver'] = 'LS'
+                    res['solver'] = 'LVM'
                     if not res['success']:
+                        boozer_surface.need_to_run_code = True
                         res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=5e-10, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
                         res['solver'] = 'NEWTON'
             except:
-               boozer_surface.res['success']=False
+                boozer_surface.res['success']=False
         
 
         success = True
@@ -188,17 +190,21 @@ class SurfaceProblem(Optimizable):
 
         res_list = [ {'solver':bs.res['solver'], 'type':bs.res['type'], 'success':bs.res['success'], 'iter':bs.res['iter'], 'residual':bs.res['residual'], 'iota':bs.res['iota']} for bs in self.boozer_surface_list ]
         for res, bs in zip(res_list, self.boozer_surface_list):
-            if bs.res['type'] != 'exact':
+            if bs.res['type'] == 'ls' and bs.res['solver'] == 'LVM':
                 res['gradient'] = bs.res['gradient']
-        
+            elif bs.res['type'] == 'ls' and bs.res['solver'] == 'NEWTON':
+                res['gradient'] = bs.res['jacobian']
+
 
         if verbose: 
             res_list = [r for rlist in MPI.COMM_WORLD.allgather(res_list) for r in rlist]
-            for res in res_list:
-                if res['type'] == 'exact':
-                    print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
-                else:
-                    print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+            if self.rank==0:
+                for res in res_list:
+                    if res['type'] == 'exact':
+                        print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
+                    else:
+                        print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+                print("--------------------------------------------------------------------------------")
         
         if False in success_list:
             for reference_surface, boozer_surface in zip(self.boozer_surface_reference, self.boozer_surface_list):
@@ -369,9 +375,17 @@ class SurfaceProblem(Optimizable):
             ratio.append(non_qs/qs)
 
         res_list = [ {'type':bs.res['type'], 'success':bs.res['success'], 'iter':bs.res['iter'], 'residual':bs.res['residual']} for bs in self.boozer_surface_list ]
+        #for res, bs in zip(res_list, self.boozer_surface_list):
+        #    if bs.res['type'] != 'exact':
+        #        res['gradient'] = bs.res['gradient']
         for res, bs in zip(res_list, self.boozer_surface_list):
-            if bs.res['type'] != 'exact':
+            if bs.res['type'] == 'ls' and bs.res['solver'] == 'LVM':
                 res['gradient'] = bs.res['gradient']
+            elif bs.res['type'] == 'ls' and bs.res['solver'] == 'NEWTON':
+                res['gradient'] = bs.res['jacobian']
+
+
+        
         res_list = [r for rlist in MPI.COMM_WORLD.allgather(res_list) for r in rlist]
 
         iotas = [ abs(res['iota']) for res in self.boozer_surface_reference ]
@@ -441,10 +455,14 @@ class SurfaceProblem(Optimizable):
         self.res=None
         self.dres=None
     def J(self, verbose=False):
+        if self.rank == 0:
+            np.savetxt(self.outdir+f"descent_direction_{self.iter}_{time.time()}.txt", self.x-self.x_reference)
+        
         if self.res is None:
-            self.update()
+            self.update(verbose=verbose)
+        
         return self.res
     def dJ(self, verbose=False):
         if self.dres is None:
-            self.update()
+            self.update(verbose=verbose)
         return self.dres
