@@ -36,24 +36,28 @@ else:
 ## SET THE INITIAL WEIGHTS, TARGET CURVATURE AND TARGET TOTAL COIL LENGTH ##
 ############################################################################
 
+
 KAPPA_MAX = 5.
-KAPPA_WEIGHT = 1e-9
+KAPPA_WEIGHT = 1e-5
 
 MSC_MAX = 5.
-MSC_WEIGHT = 1e-9
+MSC_WEIGHT = 1e-5
 
 LENGTHBOUND = length
-LENGTHBOUND_WEIGHT = 1e-9
+LENGTHBOUND_WEIGHT = 1e-4
 
 MIN_DIST = 0.1
-MIN_DIST_WEIGHT = 1e-3
+MIN_DIST_WEIGHT = 1e-2
 
-ALEN_WEIGHT = 1e-4
+ALEN_WEIGHT = 1e-8
 
-IOTAS_AVG_TARGET = -0.42
 IOTAS_AVG_WEIGHT = 1.
-TF_WEIGHT = 1.
+IOTAS_AVG_TARGET = -0.42
+MAJOR_RADIUS_WEIGHT = 1.
+TF_WEIGHT = 1e6
 MR_WEIGHT = 1.
+
+
 
 problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, coils,
                              major_radii_targets=mr_target, toroidal_flux_targets=tf_target, 
@@ -61,7 +65,7 @@ problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, co
                              minimum_distance=MIN_DIST, kappa_max=KAPPA_MAX, lengthbound_threshold=LENGTHBOUND,
                              msc_max=MSC_MAX, msc_weight=MSC_WEIGHT,
                              distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
-                             rank=rank, outdir_append="")
+                             rank=rank, outdir_append="/")
 
 
 coeffs = problem.x.copy()
