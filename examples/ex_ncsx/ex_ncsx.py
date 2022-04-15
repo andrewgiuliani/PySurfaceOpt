@@ -11,7 +11,13 @@ rank = comm.rank
 boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0], exact=True, time_stamp='1636472072.192064', tol=1e-13)
 # you can either fix the current in a single coil or introduce a toroidal flux constraint to prevent
 # currents from going to zero.  We do the former here:
-base_currents[0].fix_all()
+def fix_all_dofs(optims):
+    if not isinstance(optims, list):
+        optims = [optims]
+    for o in optims:
+        for a in o._get_ancestors():
+            a.fix_all()
+fix_all_dofs(base_currents[0])
 
 ############################################################################
 ## SET THE TARGET IOTAS, MAJOR RADIUS, TOROIDAL FLUX                      ##
