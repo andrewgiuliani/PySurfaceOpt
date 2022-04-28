@@ -4,6 +4,7 @@ from simsopt.util.zoo import get_ncsx_data
 from simsopt.field.coil import ScaledCurrent, Current, coils_via_symmetries
 from simsopt.field.biotsavart import BiotSavart
 from simsopt.geo.curvexyzfourier import CurveXYZFourier
+from simsopt.geo.curverzfourier import CurveRZFourier
 from simsopt.geo.boozersurface import BoozerSurface, boozer_surface_residual
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
 from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, Volume
@@ -47,7 +48,6 @@ def get_stageII_data(Nt_coils=16, Nt_ma=10, ppp=20, length=18):
     base_curves[3].x = dofs3
 
     return (base_curves, base_currents)
-
 
 
 def get_stageIII_data(coilset='nine', length=18):
@@ -212,7 +212,7 @@ def compute_surfaces_in_NCSX(mpol=10, ntor=10, exact=True, Nt_coils=12, write_to
     backup_dofs = s.get_dofs()
     backup_iota = iota0
     backup_G = G0
-
+        
     for idx,target in enumerate(vol_list):
         bs = BiotSavart(coils)
         label = Volume(s)
@@ -315,13 +315,13 @@ def load_surfaces_in_NCSX(mpol=10, ntor=10, stellsym=True, Nt_coils=6, idx_surfa
     return boozer_surface_list, base_curves, base_currents, coils
 
 
-
 def compute_surfaces_in_stageII(mpol=10, ntor=10, exact=True, Nt_coils=16, write_to_file=False, vol_list=None, tol=1e-13, length=18):
     nfp = 2
     stellsym = True
 
 
     PPP = 10
+    _, _, ma = get_ncsx_data(Nt_coils=Nt_coils, Nt_ma=10, ppp=PPP)
     base_curves, base_currents = get_stageII_data(length=length, Nt_coils=Nt_coils, Nt_ma=10, ppp=PPP)
     base_currents = [Current(curr.x*4 * np.pi * 1e-7) for curr in base_currents]
     base_currents = [ScaledCurrent(curr, 1/(4 * np.pi * 1e-7)) for curr in base_currents]
@@ -353,7 +353,8 @@ def compute_surfaces_in_stageII(mpol=10, ntor=10, exact=True, Nt_coils=16, write
     backup_dofs = s.get_dofs()
     backup_iota = iota0
     backup_G = G0
-
+    
+    import ipdb;ipdb.set_trace()
     for idx,target in enumerate(vol_list):
         bs = BiotSavart(coils)
         label = Volume(s)
@@ -418,7 +419,7 @@ def load_surfaces_in_stageII(length=18, mpol=10, ntor=10, stellsym=True, Nt_coil
         dofs = np.loadtxt(f)
     with open(DIR + "/data_stageII"        + f"/iotaG_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{time_stamp}.txt", 'r') as f:
         iotaG = np.loadtxt(f).reshape((-1,2))
-
+    
     base_curves, base_currents = get_stageII_data(length=length, Nt_coils=Nt_coils, Nt_ma=10, ppp=PPP)
     base_currents = [Current(curr.x*4 * np.pi * 1e-7) for curr in base_currents]
     base_currents = [ScaledCurrent(curr, 1/(4 * np.pi * 1e-7)) for curr in base_currents]
@@ -450,6 +451,211 @@ def load_surfaces_in_stageII(length=18, mpol=10, ntor=10, stellsym=True, Nt_coil
             print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={ll.J():.3f}, |label error|={np.abs(ll.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
         boozer_surface_list.append(boozer_surface)
     return boozer_surface_list, base_curves, base_currents, coils
+
+
+
+
+
+
+
+
+def get_landreman_data(length=18):
+    order=16
+    ppp=10
+
+    assert length == 18 or length == 20 or length == 22 or length == 24
+    
+
+    DIR = os.path.dirname(os.path.realpath(__file__))
+    dofs = np.loadtxt(DIR + f'/data_landreman/len{length}.txt')
+    currents = [1.] + dofs[:3].tolist()
+    geo_dofs = dofs[3:].reshape((4, -1))
+
+    base_currents = [ScaledCurrent(Current(c), 1e5) for c in currents]
+    base_curves = [CurveXYZFourier(order*ppp, order) for i in range(4)]
+    for i in range(4):
+        base_curves[i].x = geo_dofs[i, :]
+
+    return (base_curves, base_currents)
+
+
+def compute_surfaces_in_landreman(mpol=10, ntor=10, exact=True, Nt_coils=16, write_to_file=False, vol_list=None, tol=1e-13, length=18):
+    nfp = 2
+    stellsym = True
+
+    base_curves, base_currents = get_landreman_data(length=length)
+    base_currents = [Current(curr.x) for curr in base_currents]
+    base_currents = [ScaledCurrent(curr, 1e5) for curr in base_currents]
+ 
+    coils = coils_via_symmetries(base_curves, base_currents, nfp, stellsym)
+    
+    if exact:
+        nquadphi = ntor+1
+        nquadtheta = 2*mpol+1
+        phis = np.linspace(0, 1/nfp, 2*ntor+1, endpoint=False)[:ntor+1]
+        thetas = np.linspace(0, 1, 2*mpol+1, endpoint=False)
+    else:
+        nquadphi = ntor + 1 + 5
+        nquadtheta = 2*mpol + 1 + 5
+        phis = np.linspace(0, 1/(2*nfp), nquadphi, endpoint=False)
+        thetas = np.linspace(0, 1, nquadtheta, endpoint=False)
+    
+    bs = BiotSavart(coils)
+    s = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+    ma = find_magnetic_axis(bs, 60, 1.)
+    s.fit_to_curve(ma, 0.05, flip_theta=True)
+    
+
+    iota0 = -0.39
+
+    curr_sum = np.sum([curr.x for curr in base_currents]) * 1e5 
+    G0 = -2. * np.pi * 2 * nfp * curr_sum * (4 * np.pi * 10**(-7) / (2 * np.pi))
+    
+
+    #vol_list = [-0.05, -0.187, -0.44, -0.5, -0.5915342336454275] 
+    minor_R_list = np.linspace(0, np.sqrt(0.187/(2*np.pi**2)), 5)[1:].tolist() + np.linspace(np.sqrt(0.187/(2*np.pi**2)), np.sqrt(0.5915342336454275/(2*np.pi**2)), 5)[1:].tolist()
+    vol_list = -np.pi*np.array(minor_R_list)**2. * 2 * np.pi
+
+    boozer_surface_list = []
+    boozer_surface_dict = []
+
+    backup_dofs = s.get_dofs()
+    backup_iota = iota0
+    backup_G = G0
+
+    #import ipdb;ipdb.set_trace()
+    for idx,target in enumerate(vol_list):
+        bs = BiotSavart(coils)
+        label = Volume(s)
+        boozer_surface = BoozerSurface(bs, s, label, target)
+        try:
+            s.set_dofs(backup_dofs)
+            iota0 = backup_iota
+            G0 = backup_G
+
+            if exact:
+                res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
+                r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
+                print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={label.J():.3f}, |label error|={np.abs(label.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
+            else:
+                res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-10, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
+                res['solver'] = 'LVM'
+                if not res['success']:
+                    boozer_surface.need_to_run_code = True
+                    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=5e-10, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
+                    res['solver'] = 'NEWTON'
+            
+            if res['type'] == 'exact':
+                print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
+            elif res['solver'] == 'LVM':
+                print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+            elif res['solver'] == 'NEWTON':
+                print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['jacobian'], ord=np.inf):.3e}")
+            
+            #qp = np.linspace(0, 1, 100, endpoint=False)
+            #snew = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=qp, quadpoints_theta=qp)
+            #snew.x = s.x
+            #print(snew.aspect_ratio())
+            
+            if res['success']:
+                boozer_surface_list.append(boozer_surface)
+                boozer_surface_dict.append({'dofs': boozer_surface.surface.get_dofs(), 'iota': res['iota'], 'G': res['G'], 'label': boozer_surface.surface.volume(), 'target': target})
+                backup_dofs = s.get_dofs().copy()
+                backup_iota = res['iota']
+                backup_G = res['G']
+                s = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+        except Exception as inst:
+            print("Surface solver exception: ", type(inst))
+    
+    if write_to_file:
+        DIR = os.path.dirname(os.path.realpath(__file__))
+        import time
+        ts = time.time()
+        with open(DIR + "/data_landreman/" + f"surface_dofs_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{ts}.txt", 'w') as f:
+            for surf_dict in boozer_surface_dict:
+                np.savetxt(f, surf_dict['dofs'].reshape((1,-1)))
+        with open(DIR + '/data_landreman/' +        f"iotaG_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{ts}.txt", 'w') as f:
+            for surf_dict in boozer_surface_dict:
+                f.write('%s\n' % (surf_dict['iota']))
+                f.write('%s\n' % (surf_dict['G']))
+        with open(DIR + '/data_landreman/' +        f"voltargets_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{ts}.txt", 'w') as f:
+            for surf_dict in boozer_surface_dict:
+                f.write('%s %s\n' % (surf_dict['target'], surf_dict['label']))
+
+    return boozer_surface_list, base_curves, base_currents, coils
+
+def load_surfaces_in_landreman(length=18, mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=np.arange(8), exact=True, time_stamp=None, tol=1e-13, verbose=False):
+    nfp = 2
+    stellsym = True
+    if exact:
+        phis = np.linspace(0, 1/nfp, 2*ntor+1, endpoint=False)[:ntor+1]
+        thetas = np.linspace(0, 1,   2*mpol+1, endpoint=False)
+    else:
+        phis = np.linspace(0, 1/(2*nfp), ntor+1+5, endpoint=False)
+        thetas = np.linspace(0, 1, 2*mpol+1+5, endpoint=False)
+
+    nquadphi   = phis.size
+    nquadtheta = thetas.size
+
+    DIR = os.path.dirname(os.path.realpath(__file__))
+    with open(DIR + "/data_landreman" + f"/surface_dofs_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{time_stamp}.txt", 'r') as f:
+        dofs = np.loadtxt(f)
+    with open(DIR + "/data_landreman"        + f"/iotaG_mpol={mpol}_ntor={ntor}_nquadphi={nquadphi}_nquadtheta={nquadtheta}_stellsym={stellsym}_exact={exact}_Nt_coils={Nt_coils}_length={length}_{time_stamp}.txt", 'r') as f:
+        iotaG = np.loadtxt(f).reshape((-1,2))
+    
+    base_curves, base_currents = get_landreman_data(length=length)
+    base_currents = [Current(curr.x) for curr in base_currents]
+    base_currents = [ScaledCurrent(curr, 1e5) for curr in base_currents]
+
+    minor_R_list = np.linspace(0, np.sqrt(0.187/(2*np.pi**2)), 5)[1:].tolist() + np.linspace(np.sqrt(0.187/(2*np.pi**2)), np.sqrt(0.5915342336454275/(2*np.pi**2)), 5)[1:].tolist()
+    vol_list = -np.pi*np.array(minor_R_list)**2. * 2 * np.pi
+    coils = coils_via_symmetries(base_curves, base_currents, nfp, stellsym)
+
+    boozer_surface_list = []
+    for idx in idx_surfaces:
+
+        s = SurfaceXYZTensorFourier(mpol=mpol, ntor=ntor, stellsym=stellsym, nfp=nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+        s.set_dofs(dofs[idx,:])
+        
+        iota0 = iotaG[idx, 0]
+        G0 = iotaG[idx, 1]
+        
+        bs = BiotSavart(coils)
+        ll = Volume(s)
+        
+        # need to actually store target surface label for BoozerLS surfaces
+        target = vol_list[idx]
+        boozer_surface = BoozerSurface(bs, s, ll, target)
+        #res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
+        if exact:
+            res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
+            r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
+            print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={label.J():.3f}, |label error|={np.abs(label.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
+        else:
+            res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
+            res['solver'] = 'LVM'
+            if not res['success']:
+                boozer_surface.need_to_run_code = True
+                res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=5e-13, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
+                res['solver'] = 'NEWTON'
+        
+        if res['type'] == 'exact':
+            print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
+        elif res['solver'] == 'LVM':
+            print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+        elif res['solver'] == 'NEWTON':
+            print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['jacobian'], ord=np.inf):.3e}")
+        
+        boozer_surface_list.append(boozer_surface)
+    return boozer_surface_list, base_curves, base_currents, coils
+
+
+
+
+
+
+
+
 
 
 
@@ -659,3 +865,115 @@ def compute_surfaces_continuation(boozer_surface, coils, label, add_res_list=[],
             print("Didn't converge", e)
     return res_dict
 
+def find_magnetic_axis(biotsavart, n, rguess):
+    from scipy.spatial.distance import cdist
+    from scipy.optimize import fsolve
+    points = np.linspace(0, 2*np.pi, n, endpoint=False).reshape((n, 1))
+    oneton = np.asarray(range(0, n)).reshape((n, 1))
+    fak = 2*np.pi / (points[-1] - points[0] + (points[1]-points[0]))
+    dists = fak * cdist(points, points, lambda a, b: a-b)
+    np.fill_diagonal(dists, 1e-10)  # to shut up the warning
+    if n % 2 == 0:
+        D = 0.5 \
+            * np.power(-1, cdist(oneton, -oneton)) \
+            / np.tan(0.5 * dists)
+    else:
+        D = 0.5 \
+            * np.power(-1, cdist(oneton, -oneton)) \
+            / np.sin(0.5 * dists)
+
+    np.fill_diagonal(D, 0)
+    D *= fak
+    phi = points
+
+    def build_residual(rz):
+        inshape = rz.shape
+        rz = rz.reshape((2*n, 1))
+        r = rz[:n ]
+        z = rz[n:]
+        xyz = np.hstack((r*np.cos(phi), r*np.sin(phi), z))
+        biotsavart.set_points(xyz)
+        B = biotsavart.B()
+        Bx = B[:, 0].reshape((n, 1))
+        By = B[:, 1].reshape((n, 1))
+        Bz = B[:, 2].reshape((n, 1))
+        Br = np.cos(phi)*Bx + np.sin(phi)*By
+        Bphi = np.cos(phi)*By - np.sin(phi)*Bx
+        residual_r = D @ r - r * Br / Bphi
+        residual_z = D @ z - r * Bz / Bphi
+        return np.vstack((residual_r, residual_z)).reshape(inshape)
+
+    def build_jacobian(rz):
+        rz = rz.reshape((2*n, 1))
+        r = rz[:n ]
+        z = rz[n:]
+        xyz = np.hstack((r*np.cos(phi), r*np.sin(phi), z))
+        biotsavart.set_points(xyz)
+        GradB = biotsavart.dB_by_dX()
+        B = biotsavart.B()
+        Bx = B[:, 0].reshape((n, 1))
+        By = B[:, 1].reshape((n, 1))
+        Bz = B[:, 2].reshape((n, 1))
+        dxBx = GradB[:, 0, 0].reshape((n, 1))
+        dyBx = GradB[:, 1, 0].reshape((n, 1))
+        dzBx = GradB[:, 2, 0].reshape((n, 1))
+        dxBy = GradB[:, 0, 1].reshape((n, 1))
+        dyBy = GradB[:, 1, 1].reshape((n, 1))
+        dzBy = GradB[:, 2, 1].reshape((n, 1))
+        dxBz = GradB[:, 0, 2].reshape((n, 1))
+        dyBz = GradB[:, 1, 2].reshape((n, 1))
+        dzBz = GradB[:, 2, 2].reshape((n, 1))
+        cosphi = np.cos(phi)
+        sinphi = np.sin(phi)
+        Br = cosphi*Bx + sinphi*By
+        Bphi = cosphi*By - sinphi*Bx
+        drBr = cosphi*cosphi * dxBx + cosphi*sinphi*dyBx + sinphi*cosphi*dxBy + sinphi*sinphi*dyBy
+        dzBr = cosphi*dzBx + sinphi*dzBy
+        drBphi = cosphi*cosphi*dxBy + cosphi*sinphi*dyBy - sinphi*cosphi*dxBx - sinphi*sinphi*dyBx
+        dzBphi = cosphi*dzBy - sinphi*dzBx
+        drBz = cosphi * dxBz + sinphi*dyBz
+        # residual_r = D @ r - r * Br / Bphi
+        # residual_z = D @ z - r * Bz / Bphi
+        dr_resr = D + np.diag((-Br/Bphi - r*drBr/Bphi + r*Br*drBphi/Bphi**2).reshape((n,)))
+        dz_resr = np.diag((-r*dzBr/Bphi + r*Br*dzBphi/Bphi**2).reshape((n,)))
+        dr_resz = np.diag((-Bz/Bphi - r*drBz/Bphi + r*Bz*drBphi/Bphi**2).reshape((n,)))
+        dz_resz = D + np.diag((-r*dzBz/Bphi + r*Bz*dzBphi/Bphi**2).reshape((n,)))
+        return np.block([[dr_resr, dz_resr], [dr_resz, dz_resz]])
+    
+    r0 = np.ones_like(phi) * rguess
+    z0 = np.zeros_like(phi)
+    x0 = np.vstack((r0, z0))
+    # h = np.random.rand(x0.size).reshape(x0.shape)
+    # eps = 1e-4
+    # drdh = build_jacobian(x0)@h
+    # drdh_est = (build_residual(x0+eps*h)-build_residual(x0-eps*h))/(2*eps)
+    # err = np.linalg.norm(drdh-drdh_est)
+    # print(err)
+    # print(np.hstack((drdh, drdh_est)))
+
+    # diff = 1e10
+    # soln = x0.copy()
+    # for i in range(50):
+        # r = build_residual(soln)
+        # print("r", np.linalg.norm(r))
+        # update = np.linalg.solve(build_jacobian(soln), r)
+        # soln -= 0.01 * update
+        # diff = np.linalg.norm(update)
+        # print('dx', diff)
+
+    soln = fsolve(build_residual, x0, fprime=build_jacobian, xtol=1e-13)
+    #rz = np.hstack((soln[:n, None], phi, soln[n:, None]))
+    xyz = np.hstack((soln[:n, None]*np.cos(phi), soln[:n, None]*np.sin(phi), soln[n:, None]))
+    quadpoints = np.linspace(0, 1, n, endpoint=False)
+    ma = CurveRZFourier(quadpoints, n//2, 1, True)
+    ma.least_squares_fit(xyz)
+    dofs = ma.x.copy()
+
+    quadpoints = np.linspace(0, 1/2, n, endpoint=False)
+    ma = CurveRZFourier(quadpoints, n//2, 1, True)
+    ma.x = dofs
+    
+    ma2 = CurveRZFourier(quadpoints, n//2, 2, True)
+    ma2.least_squares_fit(ma.gamma())
+    
+    return ma2
