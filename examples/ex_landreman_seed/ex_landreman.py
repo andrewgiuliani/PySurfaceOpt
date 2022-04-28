@@ -9,6 +9,10 @@ comm = MPI.COMM_WORLD
 rank = comm.rank
 
 
+def printf(*args, **kwargs):
+    if rank == 0:
+        print(*args, **kwargs)
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--length")
 parser.add_argument("--seed")
@@ -110,7 +114,7 @@ MAXITER = 1
 for outer_iter in range(15):
     dofs = dofs_prev.copy()
     
-    print(f"""
+    printf(f"""
     ################################################################################
     Outer iteration {outer_iter}
     ################################################################################
@@ -130,8 +134,6 @@ for outer_iter in range(15):
         ALEN_WEIGHT*=10
     np.savetxt(problem.outdir + f"x_{outer_iter}.txt", res.x)
     np.savetxt(problem.outdir + f"weights_{outer_iter}.txt", [LENGTHBOUND_WEIGHT, MIN_DIST_WEIGHT, KAPPA_WEIGHT, MSC_WEIGHT, ALEN_WEIGHT])
-    print(f"J{outer_iter}={res.fun}, ||dJ||={np.linalg.norm(res.jac, ord=np.inf)}\n")
-    print(f"NEW WEIGHTS = [{LENGTHBOUND_WEIGHT}, {MIN_DIST_WEIGHT}, {KAPPA_WEIGHT}, {MSC_WEIGHT}, {ALEN_WEIGHT}]")
-
-if rank == 0:
-    print(f"{res['success']}, {res['message']}")
+    printf(f"J{outer_iter}={res.fun}, ||dJ||={np.linalg.norm(res.jac, ord=np.inf)}\n")
+    printf(f"NEW WEIGHTS = [{LENGTHBOUND_WEIGHT}, {MIN_DIST_WEIGHT}, {KAPPA_WEIGHT}, {MSC_WEIGHT}, {ALEN_WEIGHT}]")
+    printf(f"{res['success']}, {res['message']}")
