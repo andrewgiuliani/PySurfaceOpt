@@ -40,6 +40,7 @@ def fix_all_dofs(optims):
 fix_all_dofs(base_currents[0])
 
 if seed > 0:
+    np.random.seed(seed)
     order = 4
     idx = np.arange(0,2*order+1)
     for bc in base_curves:
@@ -95,7 +96,7 @@ problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, co
                              msc_max=MSC_MAX, msc_weight=MSC_WEIGHT,
                              distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
                              residual_weight=RESIDUAL_WEIGHT,
-                             rank=rank, outdir_append=f"seed={seed}_len={length}")
+                             rank=rank, outdir_append=f"seed={seed}_len={length}/init")
 
 
 dofs = problem.x.copy()
@@ -110,7 +111,7 @@ def J_scipy(dofs,*args):
 
 from scipy.optimize import minimize
 
-MAXITER = 1
+MAXITER = 1000
 for outer_iter in range(15):
     dofs = dofs_prev.copy()
     
@@ -119,6 +120,16 @@ for outer_iter in range(15):
     Outer iteration {outer_iter}
     ################################################################################
     """)
+
+    problem = pys.SurfaceProblem(boozer_surface_list, base_curves, base_currents, coils,
+                                 iotas_target=iotas_target, iotas_avg_target=IOTAS_AVG_TARGET, major_radii_targets=mr_target, 
+                                 iotas_target_weight=IOTAS_TARGET_WEIGHT, iotas_avg_weight=IOTAS_AVG_WEIGHT, mr_weight=MR_WEIGHT,
+                                 minimum_distance=MIN_DIST, kappa_max=KAPPA_MAX, lengthbound_threshold=LENGTHBOUND,
+                                 msc_max=MSC_MAX, msc_weight=MSC_WEIGHT,
+                                 distance_weight=MIN_DIST_WEIGHT, curvature_weight=KAPPA_WEIGHT, lengthbound_weight=LENGTHBOUND_WEIGHT, arclength_weight=ALEN_WEIGHT,
+                                 residual_weight=RESIDUAL_WEIGHT,
+                                 rank=rank, outdir_append=f"seed={seed}_len={length}/outer_iter={outer_iter}")
+
     res = minimize(J_scipy, dofs, jac=True, method='bfgs', tol=1e-20, callback=problem.callback, options={'maxiter': MAXITER})
     dofs_prev = res.x.copy()
 

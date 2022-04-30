@@ -173,12 +173,12 @@ class SurfaceProblem(Optimizable):
                     res = boozer_surface.solve_residual_equation_exactly_newton( tol=1e-13, maxiter=30, iota=iota0, G=G0)
                     res['solver'] = 'NEWTON'
                 else:
-                    res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-10, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
+                    res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
                     res['solver'] = 'LVM'
-                    if not res['success']:
-                        boozer_surface.need_to_run_code = True
-                        res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=5e-10, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
-                        res['solver'] = 'NEWTON'
+                    #if not res['success']:
+                    #    boozer_surface.need_to_run_code = True
+                    #    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=10, constraint_weight=100., iota=res['iota'], G=res['G'])
+                    #    res['solver'] = 'NEWTON'
             except:
                 boozer_surface.res['success']=False
         
