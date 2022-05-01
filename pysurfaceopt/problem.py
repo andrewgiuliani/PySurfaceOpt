@@ -124,7 +124,12 @@ class SurfaceProblem(Optimizable):
 
         
         Optimizable.__init__(self, depends_on=dependencies)
+        
+        self.res_reference = None
+        self.dres_referene = None
         self.update(verbose=True)
+        
+        
         self.x_reference = self.x
         self.res_reference = self.res
         self.dres_reference = self.dres
@@ -173,11 +178,11 @@ class SurfaceProblem(Optimizable):
                     res = boozer_surface.solve_residual_equation_exactly_newton( tol=1e-13, maxiter=30, iota=iota0, G=G0)
                     res['solver'] = 'NEWTON'
                 else:
-                    res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-10, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
+                    res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
                     res['solver'] = 'LVM'
                     if not res['success']:
                         boozer_surface.need_to_run_code = True
-                        res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=5e-10, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
+                        res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'])
                         res['solver'] = 'NEWTON'
             except:
                 boozer_surface.res['success']=False
@@ -190,10 +195,7 @@ class SurfaceProblem(Optimizable):
 
         res_list = [ {'solver':bs.res['solver'], 'type':bs.res['type'], 'success':bs.res['success'], 'iter':bs.res['iter'], 'residual':bs.res['residual'], 'iota':bs.res['iota']} for bs in self.boozer_surface_list ]
         for res, bs in zip(res_list, self.boozer_surface_list):
-            if bs.res['type'] == 'ls' and bs.res['solver'] == 'LVM':
-                res['gradient'] = bs.res['gradient']
-            elif bs.res['type'] == 'ls' and bs.res['solver'] == 'NEWTON':
-                res['gradient'] = bs.res['jacobian']
+            res['gradient'] = bs.res['gradient']
 
 
         if verbose: 
@@ -201,9 +203,9 @@ class SurfaceProblem(Optimizable):
             if self.rank==0:
                 for res in res_list:
                     if res['type'] == 'exact':
-                        print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
+                        print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
                     else:
-                        print(f"{res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+                        print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
                 print("--------------------------------------------------------------------------------")
         
         if False in success_list:
@@ -443,9 +445,9 @@ class SurfaceProblem(Optimizable):
 
             for res in res_list:
                 if res['type'] == 'exact':
-                    print(f"iter={res['iter']}, success={res['success']}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e}")
+                    print(f"{res['success']} - iter={res['iter']}, success={res['success']}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e}")
                 else:
-                    print(f"iter={res['iter']}, success={res['success']}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+                    print(f"{res['success']} - iter={res['iter']}, success={res['success']}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
  
             print("################################################################################")
             if self.output:

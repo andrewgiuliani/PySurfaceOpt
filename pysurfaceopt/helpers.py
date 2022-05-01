@@ -636,7 +636,7 @@ def load_surfaces_in_landreman(length=18, mpol=10, ntor=10, stellsym=True, Nt_co
             res['solver'] = 'LVM'
             if not res['success']:
                 boozer_surface.need_to_run_code = True
-                res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=5e-13, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
+                res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
                 res['solver'] = 'NEWTON'
         
         if res['type'] == 'exact':
