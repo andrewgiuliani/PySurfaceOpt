@@ -180,13 +180,54 @@ class SurfaceProblem(Optimizable):
                 else:
                     res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
                     res['solver'] = 'LVM'
-                    if not res['success']:
+                    
+                    # if close to minimum, try Newton
+                    if not res['success'] and np.linalg.norm(res['gradient'], ord=np.inf) < 1.:
                         boozer_surface.need_to_run_code = True
                         res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'])
                         res['solver'] = 'NEWTON'
             except:
                 boozer_surface.res['success']=False
         
+        # one last try, let's do a continuation
+        for reference_surface, boozer_surface in zip(self.boozer_surface_reference, self.boozer_surface_list):
+            if not boozer_surface.res['success']:
+                boozer_surface.surface.set_dofs(reference_surface['dofs'])
+                iota0 = reference_surface['iota']
+                G0 = reference_surface['G']
+                
+                N_cont = 10
+                print(f"Continuation on rank {self.rank}")
+                x_old = self.x_reference.copy()
+                x_new = self.x.copy()
+                interp = np.linspace(0, 1, N_cont)
+                for alpha in interp.tolist():
+                    self.x = alpha*x_new + (1-alpha)*x_old
+                     
+                    boozer_surface.need_to_run_code = True
+                    try: 
+                        if boozer_surface.res['type'] == 'exact':
+                            res = boozer_surface.solve_residual_equation_exactly_newton( tol=1e-13, maxiter=30, iota=iota0, G=G0)
+                            res['solver'] = 'NEWTON'
+                        else:
+                            res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
+                            res['solver'] = 'LVM'
+
+                            # if close to minimum, try Newton
+                            if not res['success'] and np.linalg.norm(res['gradient'], ord=np.inf) < 1.:
+                                boozer_surface.need_to_run_code = True
+                                res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'])
+                                res['solver'] = 'NEWTON'
+                        
+                        iota0=res['iota']
+                        G0=res['G']
+                    except:
+                        boozer_surface.res['success']=False
+                    print(f"rank={self.rank}, alpha={alpha}, solver={res['solver']}, success={res['success']}, iter={res['iter']}")
+                    
+                    if not boozer_surface.res['success']:
+                        self.x = x_new
+                        break # continuation failed
 
         success = True
         for bs in self.boozer_surface_list:
