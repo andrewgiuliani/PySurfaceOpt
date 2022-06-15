@@ -78,6 +78,7 @@ class SurfaceProblem(Optimizable):
         self.kappa_max = kappa_max
         
         dependencies=[]
+        dependencies+=boozer_surface_list
         dependencies+=self.J_curvature+self.J_msc+self.J_arclength+self.J_coil_lengths+[self.J_distance]
         dependencies+=self.J_nonQS_ratio+self.J_major_radii+self.J_toroidal_flux+self.J_boozer_residual+self.J_iotas
         
