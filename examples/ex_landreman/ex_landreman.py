@@ -9,8 +9,9 @@ rank = comm.rank
 
 
 #boozer_surface_list, base_curves, base_currents, coils = pys.compute_surfaces_in_landreman(mpol=10, ntor=10, exact=False, Nt_coils=16, write_to_file=True, length=18)
-boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_landreman(mpol=10, ntor=10, exact=False, Nt_coils=16, length=18, time_stamp='1651158336.1647642', verbose=True)
-
+boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_landreman(mpol=10, ntor=10, exact=False, idx_surfaces=[0], 
+        Nt_coils=16, length=18, time_stamp='1651158336.1647642', verbose=True, weighting=None, hessian=False)
+import ipdb;ipdb.set_trace()
 
 # you can either fix the current in a single coil or introduce a toroidal flux constraint to prevent
 # currents from going to zero.  We do the former here:

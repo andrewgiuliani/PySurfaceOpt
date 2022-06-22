@@ -379,8 +379,9 @@ class BoozerResidual(Optimizable):
         # same number of points as on the solved surface
         #phis   = in_surface.quadpoints_phi
         #thetas = in_surface.quadpoints_theta
-        phis = np.linspace(0, 1/in_surface.nfp, 2*sDIM, endpoint=False)
+        phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
         thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)
+        phis+=phis[0]/2.
 
         s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
         s.set_dofs(in_surface.get_dofs())
@@ -409,17 +410,24 @@ class BoozerResidual(Optimizable):
     def compute(self):
         self.surface.set_dofs(self.in_surface.get_dofs())
         self.biotsavart.set_points(self.surface.gamma().reshape((-1,3)))
-        
+ 
+        nphi = self.surface.quadpoints_phi.size
+        ntheta = self.surface.quadpoints_theta.size
+        num_points = 3 * nphi * ntheta
+        if self.boozer_surface.res['type'] == 'exact':
+            w = None
+        else:
+            w = self.boozer_surface.res['weighting']
+
         # compute J
         surface = self.surface
         iota = self.boozer_surface.res['iota']
         G = self.boozer_surface.res['G']
-        r, = boozer_surface_residual(surface, iota, G, self.biotsavart, derivatives=0)
-        r = np.concatenate((r, [np.sqrt(self.constraint_weight)*(self.boozer_surface.label.J()-self.boozer_surface.targetlabel)] ) )
-        self._J = 0.5*np.sum(r*r)
+        r, J = boozer_surface_residual(surface, iota, G, self.biotsavart, derivatives=1,weighting=w)
+        rtil = np.concatenate((r/np.sqrt(num_points), [np.sqrt(self.constraint_weight)*(self.boozer_surface.label.J()-self.boozer_surface.targetlabel)] ) )
+        self._J = 0.5*np.sum(rtil**2)
         
         booz_surf = self.boozer_surface
-        r, J = boozer_surface_residual(surface, iota, G, self.biotsavart, derivatives=1)
         P, L, U = booz_surf.res['PLU']
         dconstraint_dcoils_vjp = boozer_surface_dexactresidual_dcoils_dcurrents_vjp if booz_surf.res['type'] == 'exact' else boozer_surface_dlsqgrad_dcoils_vjp
 
@@ -427,23 +435,34 @@ class BoozerResidual(Optimizable):
         dJ_by_dcoils = self.biotsavart.B_vjp(dJ_by_dB)
 
         # dJ_diota, dJ_dG  to the end of dJ_ds are on the end
-        r = np.concatenate((r, [np.sqrt(self.constraint_weight)*(self.boozer_surface.label.J()-self.boozer_surface.targetlabel)] ) )
         dl = np.zeros((J.shape[1],))
         dl[:-2] = self.boozer_surface.label.dJ_by_dsurfacecoefficients()
-        J = np.concatenate((J, np.sqrt(self.constraint_weight) * dl[None, :]), axis=0)
-        dJ_ds = J.T@r
+        Jtil = np.concatenate((J/np.sqrt(num_points), np.sqrt(self.constraint_weight) * dl[None, :]), axis=0)
+        dJ_ds = Jtil.T@rtil
         adj = forward_backward(P, L, U, dJ_ds)
         
         adj_times_dg_dcoil = dconstraint_dcoils_vjp(adj, booz_surf, iota, G, booz_surf.bs)
         self._dJ = dJ_by_dcoils -  adj_times_dg_dcoil
-
+        
     def dJ_by_dB(self):
         """
         Return the partial derivative of the objective with respect to the magnetic field
         """
         
         surface = self.surface
-        r, r_dB = boozer_surface_residual_dB(surface, self.boozer_surface.res['iota'], self.boozer_surface.res['G'], self.biotsavart, derivatives=0)
+        nphi = self.surface.quadpoints_phi.size
+        ntheta = self.surface.quadpoints_theta.size
+        num_points = 3 * nphi * ntheta
+        if self.boozer_surface.res['type'] == 'exact':
+            w = None
+        else:
+            w = self.boozer_surface.res['weighting']
+
+        r, r_dB = boozer_surface_residual_dB(surface, self.boozer_surface.res['iota'], self.boozer_surface.res['G'], self.biotsavart, derivatives=0, weighting=w)
+
+        r/=np.sqrt(num_points)
+        r_dB/=np.sqrt(num_points)
+        
         dJ_by_dB = r[:, None]*r_dB
         dJ_by_dB = np.sum(dJ_by_dB.reshape((-1, 3, 3)), axis=1)
         return dJ_by_dB
@@ -683,13 +702,16 @@ def boozer_surface_dlsqgrad_dcoils_vjp(lm, booz_surf, iota, G, biotsavart):
 
     #lm_label = lm[-1]
     surface = booz_surf.surface
+    nphi = surface.quadpoints_phi.size
+    ntheta = surface.quadpoints_theta.size
+    num_points = 3 * nphi * ntheta
     # r, dr_dB, J, d2residual_dsurfacedB, d2residual_dsurfacedgradB
-    boozer = boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=1)
-    r = boozer[0]
-    dr_dB = boozer[1].reshape((-1, 3, 3))
-    dr_ds = boozer[2]
-    d2r_dsdB = boozer[3]
-    d2r_dsdgradB = boozer[4]
+    boozer = boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=1, weighting=booz_surf.res['weighting'])
+    r = boozer[0]/np.sqrt(num_points)
+    dr_dB = boozer[1].reshape((-1, 3, 3))/np.sqrt(num_points)
+    dr_ds = boozer[2]/np.sqrt(num_points)
+    d2r_dsdB = boozer[3]/np.sqrt(num_points)
+    d2r_dsdgradB = boozer[4]/np.sqrt(num_points)
 
     v1 = np.sum(np.sum(lm[:, None]*dr_ds.T, axis=0).reshape((-1, 3, 1)) * dr_dB, axis=1)
     v2 = np.sum(r.reshape((-1, 3, 1))*np.sum(lm[None, None, :]*d2r_dsdB, axis=-1).reshape((-1, 3, 3)), axis=1)
@@ -708,7 +730,7 @@ def boozer_surface_dlsqgrad_dcoils_vjp(lm, booz_surf, iota, G, biotsavart):
 
 
 
-def boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=0):
+def boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=0, weighting=None):
     """
     For a given surface with points x on it, this function computes the
     differentiated residual
@@ -718,7 +740,7 @@ def boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=0):
     G is known for exact boozer surfaces, so if G=None is passed, then that
     value is used instead.
     """
-
+    
     user_provided_G = G is not None
     if not user_provided_G:
         G = 2. * np.pi * np.sum(np.abs(biotsavart.coil_currents)) * (4 * np.pi * 10**(-7) / (2 * np.pi))
@@ -741,12 +763,26 @@ def boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=0):
     GI = np.eye(3, 3) * G
     dresidual_dB = GI[None, None, :, :] - 2. * tang[:, :, :, None] * B[:, :, None, :]
 
-    residual_flattened = residual.reshape((nphi*ntheta*3, ))
-    dresidual_dB_flattened = dresidual_dB.reshape((nphi*ntheta*3, 3))
-    r = residual_flattened
-    dr_dB = dresidual_dB_flattened
+    if weighting == '1/B':
+        B2 = np.sum(B**2, axis=2)
+        modB = np.sqrt(B2)
+        w = 1./modB
+        dw_dB = -B/B2[:, :, None]**1.5
+
+
+
+    if weighting is not None:
+        rtil = w[:, :, None] * residual
+        drtil_dB = residual[:, :, :, None] * dw_dB[:, :, None, :] + dresidual_dB * w[:, :, None, None] 
+    else:
+        rtil = residual.copy()
+        drtil_dB = dresidual_dB.copy()
+
+    rtil_flattened = rtil.reshape((nphi*ntheta*3, ))
+    drtil_dB_flattened = drtil_dB.reshape((nphi*ntheta*3, 3))
+
     if derivatives == 0:
-        return r, dr_dB
+        return rtil_flattened, drtil_dB_flattened
 
     dx_dc = surface.dgamma_by_dcoeff()
     dxphi_dc = surface.dgammadash1_by_dcoeff()
@@ -767,34 +803,69 @@ def boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=0):
     idx = np.arange(3)
     d2residual_dcdgradB[:, :, idx, :, idx, :] += dx_dc * G
 
-    dresidual_dc_flattened = dresidual_dc.reshape((nphi*ntheta*3, nsurfdofs))
-    dresidual_diota_flattened = dresidual_diota.reshape((nphi*ntheta*3, 1))
-    d2residual_dcdB_flattened = d2residual_dcdB.reshape((nphi*ntheta*3, 3, nsurfdofs))
-    d2residual_diotadB_flattened = d2residual_diotadB.reshape((nphi*ntheta*3, 3, 1))
-    d2residual_dcdgradB_flattened = d2residual_dcdgradB.reshape((nphi*ntheta*3, 3, 3, nsurfdofs))
-    d2residual_diotadgradB_flattened = np.zeros((nphi*ntheta*3, 3, 3, 1))
+    if weighting == '1/B':
+        dB2_dc = 2*np.einsum('ijk,ijkl->ijl', B, dB_dc, optimize=True)
+        dmodB_dc = 0.5*dB2_dc/modB[:, :, None]
+        dw_dc =  -dmodB_dc/B2[:, :, None]
+        
+        d2w_dcdB = -(dB_dc * B2[:, :, None, None]**1.5 - 1.5*dB2_dc[:, :, None, :]*modB[:, :, None, None]*B[:, :, :, None])/B2[:, :, None, None]**3
+        d2w_dcdgradB = dw_dB[:, :, None, :, None] * dx_dc[:, :, :, None, :]
+
+    if weighting is not None:
+        drtil_dc        = dresidual_dc * w[:, :, None, None] + dw_dc[:, :, None, :] * residual[..., None]
+        drtil_diota     = w[:, :, None] * dresidual_diota
+        d2rtil_dcdB     = dresidual_dc[:, :, :, None, :]*dw_dB[:, :, None, :, None]  \
+                        + dresidual_dB[:, :, :, :, None]*dw_dc[:, :, None, None, :] \
+                        + d2residual_dcdB*w[:, :, None, None, None] \
+                        + residual[:, :, :, None, None]*d2w_dcdB[:, :, None, :, :]
+        d2rtil_diotadB  = dw_dB[:, :, None, :]*dresidual_diota[:, :, :, None] + w[:, :, None, None]*d2residual_diotadB 
+        d2rtil_dcdgradB = d2w_dcdgradB[:, :, None, :, :, :]*residual[:, :, :, None, None, None] + d2residual_dcdgradB*w[:, :, None, None, None, None]
+    else:
+        drtil_dc        = dresidual_dc.copy()
+        drtil_diota     = dresidual_diota.copy()
+        d2rtil_dcdB     = d2residual_dcdB.copy()
+        d2rtil_diotadB  = d2residual_diotadB.copy()
+        d2rtil_dcdgradB = d2residual_dcdgradB.copy()
+
+
+    drtil_dc_flattened = drtil_dc.reshape((nphi*ntheta*3, nsurfdofs))
+    drtil_diota_flattened = drtil_diota.reshape((nphi*ntheta*3, 1))
+    d2rtil_dcdB_flattened = d2rtil_dcdB.reshape((nphi*ntheta*3, 3, nsurfdofs))
+    d2rtil_diotadB_flattened = d2rtil_diotadB.reshape((nphi*ntheta*3, 3, 1))
+    d2rtil_dcdgradB_flattened = d2rtil_dcdgradB.reshape((nphi*ntheta*3, 3, 3, nsurfdofs))
+    d2rtil_diotadgradB_flattened = np.zeros((nphi*ntheta*3, 3, 3, 1))
 
     if user_provided_G:
         dresidual_dG = B
-        dresidual_dG_flattened = dresidual_dG.reshape((nphi*ntheta*3, 1))
-        J = np.concatenate((dresidual_dc_flattened, dresidual_diota_flattened, dresidual_dG_flattened), axis=1)
-
         d2residual_dGdB = np.ones((nphi*ntheta, 3, 3))
         d2residual_dGdB[:, :, :] = np.eye(3)[None, :, :]
-        d2residual_dGdB = d2residual_dGdB.reshape((3*nphi*ntheta, 3, 1))
-        d2residual_dGdgradB = np.zeros((3*nphi*ntheta, 3, 3, 1))
+        d2residual_dGdB = d2residual_dGdB.reshape((nphi,ntheta, 3, 3))
+        d2residual_dGdgradB = np.zeros((nphi, ntheta, 3, 3, 3))
 
-        d2residual_dsurfacedB = np.concatenate((d2residual_dcdB_flattened,
-                                                d2residual_diotadB_flattened,
-                                                d2residual_dGdB), axis=-1)
-        d2residual_dsurfacedgradB = np.concatenate((d2residual_dcdgradB_flattened,
-                                                    d2residual_diotadgradB_flattened,
-                                                    d2residual_dGdgradB), axis=-1)
+        if weighting is not None:
+            drtil_dG = dresidual_dG * w[:, :, None]
+            d2rtil_dGdB = d2residual_dGdB * w[:, :, None, None] + dw_dB[:, :, None, :]*dresidual_dG[:, :, :, None]
+            d2rtil_dGdgradB = d2residual_dGdgradB.copy()
+        else:
+            drtil_dG = dresidual_dG.copy()
+            d2rtil_dGdB = d2residual_dGdB.copy()
+            d2rtil_dGdgradB = d2residual_dGdgradB.copy()
+
+        drtil_dG_flattened = drtil_dG.reshape((nphi*ntheta*3, 1))
+        d2rtil_dGdB_flattened = d2rtil_dGdB.reshape((nphi*ntheta*3, 3, 1))
+        d2rtil_dGdgradB_flattened = d2rtil_dGdgradB.reshape((nphi*ntheta*3, 3, 3, 1))
+
+        J = np.concatenate((drtil_dc_flattened, drtil_diota_flattened, drtil_dG_flattened), axis=1)
+        d2rtil_dsurfacedB = np.concatenate((d2rtil_dcdB_flattened,
+                                            d2rtil_diotadB_flattened,
+                                            d2rtil_dGdB_flattened), axis=-1)
+        d2rtil_dsurfacedgradB = np.concatenate((d2rtil_dcdgradB_flattened,
+                                                d2rtil_diotadgradB_flattened,
+                                                d2rtil_dGdgradB_flattened), axis=-1)
     else:
-        J = np.concatenate((dresidual_dc_flattened, dresidual_diota_flattened), axis=1)
-        d2residual_dsurfacedB = np.concatenate((d2residual_dcdB_flattened, d2residual_diotadB_flattened), axis=-1)
-        d2residual_dsurfacedgradB = np.concatenate((d2residual_dcdgradB_flattened,
-                                                    d2residual_diotadgradB_flattened), axis=-1)
+        J = np.concatenate((drtil_dc_flattened, drtil_diota_flattened), axis=1)
+        d2rtil_dsurfacedB = np.concatenate((d2rtil_dcdB_flattened, d2rtil_diotadB_flattened), axis=-1)
+        d2rtil_dsurfacedgradB = np.concatenate((d2rtil_dcdgradB_flattened, d2rtil_diotadgradB_flattened), axis=-1)
 
     if derivatives == 1:
-        return r, dr_dB, J, d2residual_dsurfacedB, d2residual_dsurfacedgradB
+        return rtil_flattened, drtil_dB_flattened, J, d2rtil_dsurfacedB, d2rtil_dsurfacedgradB

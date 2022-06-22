@@ -513,8 +513,9 @@ def compute_surfaces_in_landreman(mpol=10, ntor=10, exact=True, Nt_coils=16, wri
     
 
     #vol_list = [-0.05, -0.187, -0.44, -0.5, -0.5915342336454275] 
-    minor_R_list = np.linspace(0, np.sqrt(0.187/(2*np.pi**2)), 5)[1:].tolist() + np.linspace(np.sqrt(0.187/(2*np.pi**2)), np.sqrt(0.5915342336454275/(2*np.pi**2)), 5)[1:].tolist()
-    vol_list = -np.pi*np.array(minor_R_list)**2. * 2 * np.pi
+    if vol_list is None:
+        minor_R_list = np.linspace(0, np.sqrt(0.187/(2*np.pi**2)), 5)[1:].tolist() + np.linspace(np.sqrt(0.187/(2*np.pi**2)), np.sqrt(0.5915342336454275/(2*np.pi**2)), 5)[1:].tolist()
+        vol_list = -np.pi*np.array(minor_R_list)**2. * 2 * np.pi
 
     boozer_surface_list = []
     boozer_surface_dict = []
@@ -584,7 +585,10 @@ def compute_surfaces_in_landreman(mpol=10, ntor=10, exact=True, Nt_coils=16, wri
 
     return boozer_surface_list, base_curves, base_currents, coils
 
-def load_surfaces_in_landreman(length=18, mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=np.arange(8), exact=True, time_stamp=None, tol=1e-13, verbose=False):
+def load_surfaces_in_landreman(length=18, mpol=10, ntor=10, stellsym=True, Nt_coils=16, idx_surfaces=np.arange(8), exact=True, time_stamp=None, tol=1e-13, verbose=False, weighting=None, hessian=True):
+    if exact:
+        assert weighting is None
+
     nfp = 2
     stellsym = True
     if exact:
@@ -593,6 +597,7 @@ def load_surfaces_in_landreman(length=18, mpol=10, ntor=10, stellsym=True, Nt_co
     else:
         phis = np.linspace(0, 1/(2*nfp), ntor+1+5, endpoint=False)
         thetas = np.linspace(0, 1, 2*mpol+1+5, endpoint=False)
+        phis+=phis[0]/2
 
     nquadphi   = phis.size
     nquadtheta = thetas.size
@@ -626,17 +631,17 @@ def load_surfaces_in_landreman(length=18, mpol=10, ntor=10, stellsym=True, Nt_co
         # need to actually store target surface label for BoozerLS surfaces
         target = vol_list[idx]
         boozer_surface = BoozerSurface(bs, s, ll, target)
-        #res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
+        
         if exact:
             res = boozer_surface.solve_residual_equation_exactly_newton(tol=tol, maxiter=30,iota=iota0,G=G0)
             r, = boozer_surface_residual(s, res['iota'], res['G'], bs, derivatives=0)
             print(f"iter={res['iter']}, iota={res['iota']:.16f}, vol={label.J():.3f}, |label error|={np.abs(label.J()-target):.3e}, ||residual||_inf={np.linalg.norm(r, ord=np.inf):.3e}, cond = {np.linalg.cond(res['jacobian']):.3e}")
         else:
-            res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=True)
+            res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=200, constraint_weight=100., iota=iota0, G=G0, method='manual', hessian=hessian, weighting=weighting)
             res['solver'] = 'LVM'
             if not res['success']:
                 boozer_surface.need_to_run_code = True
-                res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'])
+                res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=30, constraint_weight=100., iota=res['iota'], G=res['G'], weighting=weighting)
                 res['solver'] = 'NEWTON'
         
         if res['type'] == 'exact':
