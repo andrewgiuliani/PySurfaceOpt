@@ -178,17 +178,23 @@ class SurfaceProblem(Optimizable):
                     res = boozer_surface.solve_residual_equation_exactly_newton(tol=1e-13, maxiter=30, iota=iota0, G=G0)
                     res['solver'] = 'NEWTON'
                 else:
-                    res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-15, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', 
-                            hessian=True, weighting=boozer_surface.res['weighting'])
+                    res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', 
+                            hessian=False, weighting=boozer_surface.res['weighting'])
                     res['solver'] = 'LVM'
                     
-
                     # if close to minimum, try Newton
-                    if not res['success'] and np.linalg.norm(res['gradient'], ord=np.inf) < 1.:
+                    #if not res['success'] and np.linalg.norm(res['gradient'], ord=np.inf) < 1.:
+                    #    boozer_surface.need_to_run_code = True
+                    #    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'],
+                    #            weighting=boozer_surface.res['weighting'])
+                    #    res['solver'] = 'NEWTON'
+                    
+                    if np.linalg.norm(res['gradient'], ord=np.inf) < 1.:
+                        # exactly constrained now
                         boozer_surface.need_to_run_code = True
-                        res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-15, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'],
+                        res = boozer_surface.minimize_boozer_exact_constraints_newton(tol=1e-13, maxiter=30, iota=res['iota'], G=res['G'],
                                 weighting=boozer_surface.res['weighting'])
-                        res['solver'] = 'NEWTON'
+                        res['solver'] = 'NEWTON_cons'
             except:
                 boozer_surface.res['success']=False
         
@@ -241,9 +247,10 @@ class SurfaceProblem(Optimizable):
                      'residual':bs.res['residual'], 'iota':bs.res['iota']} for bs in self.boozer_surface_list ]
         
         for res, bs in zip(res_list, self.boozer_surface_list):
-            if bs.res['type'] == 'ls':
-                res['gradient'] = bs.res['gradient']
-
+            if 'labelerr' in bs.res:
+                res['labelerr'] = bs.res['labelerr']
+            if 'firstorderop' in bs.res:
+                res['firstorderop'] = bs.res['firstorderop']
 
         if verbose: 
             res_list = [r for rlist in MPI.COMM_WORLD.allgather(res_list) for r in rlist]
@@ -252,7 +259,7 @@ class SurfaceProblem(Optimizable):
                     if res['type'] == 'exact':
                         print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
                     else:
-                        print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+                        print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['firstorderop'], ord=np.inf):.3e}, rel. label error: {res['labelerr']}")
                 print("--------------------------------------------------------------------------------")
         
         if False in success_list:
@@ -424,15 +431,12 @@ class SurfaceProblem(Optimizable):
             ratio.append(non_qs/qs)
 
         res_list = [ {'type':bs.res['type'], 'success':bs.res['success'], 'iter':bs.res['iter'], 'residual':bs.res['residual']} for bs in self.boozer_surface_list ]
-        #for res, bs in zip(res_list, self.boozer_surface_list):
-        #    if bs.res['type'] != 'exact':
-        #        res['gradient'] = bs.res['gradient']
-        for res, bs in zip(res_list, self.boozer_surface_list):
-            if bs.res['type'] == 'ls' and bs.res['solver'] == 'LVM':
-                res['gradient'] = bs.res['gradient']
-            elif bs.res['type'] == 'ls' and bs.res['solver'] == 'NEWTON':
-                res['gradient'] = bs.res['jacobian']
 
+        for res, bs in zip(res_list, self.boozer_surface_list):
+            if 'labelerr' in bs.res:
+                res['labelerr'] = bs.res['labelerr']
+            if 'firstorderop' in bs.res:
+                res['firstorderop'] = bs.res['firstorderop']
 
         
         res_list = [r for rlist in MPI.COMM_WORLD.allgather(res_list) for r in rlist]
@@ -494,7 +498,7 @@ class SurfaceProblem(Optimizable):
                 if res['type'] == 'exact':
                     print(f"{res['success']} - iter={res['iter']}, success={res['success']}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e}")
                 else:
-                    print(f"{res['success']} - iter={res['iter']}, success={res['success']}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['gradient'], ord=np.inf):.3e}")
+                    print(f"{res['success']} - iter={res['iter']}, success={res['success']}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||firstorderopt||_inf = {np.linalg.norm(res['firstorderop'], ord=np.inf):.3e}, rel. label error: {res['labelerr']}")
  
             print("################################################################################")
             if self.output:

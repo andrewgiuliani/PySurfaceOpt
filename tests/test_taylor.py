@@ -12,7 +12,7 @@ rank = comm.rank
 #boozer_surface_list, base_curves, base_currents, coils = pys.compute_surfaces_in_NCSX(Nt_coils=12, exact=True, write_to_file=True)
 #boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[0], exact=True, time_stamp='1636472072.192064')
 #boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_NCSX(Nt_coils=12, idx_surfaces=[rank], exact=True, time_stamp='1636472072.192064')
-boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_landreman(mpol=10, ntor=10, exact=False, idx_surfaces=[0], 
+boozer_surface_list, base_curves, base_currents, coils = pys.load_surfaces_in_landreman(mpol=10, ntor=10, exact=False, idx_surfaces=[3], 
         Nt_coils=16, length=18, time_stamp='1651158336.1647642', verbose=True, weighting="1/B")
 
 #boozer_surface_list, base_curves, base_currents, coils = pys.compute_surfaces_in_landreman(mpol=10, ntor=10, exact=True, Nt_coils=16, write_to_file=False, vol_list=[-1.168750e-02], tol=1e-13, length=18)
@@ -86,7 +86,7 @@ def taylor_test(obj, x, order=6, h=None, verbose=False):
     elif order == 6:
         shifts = [-3, -2, -1, 1, 2, 3]
         weights = [-1/60, 3/20, -3/4, 3/4, -3/20, 1/60]
-    for i in range(10, 40):
+    for i in range(12, 40):
         eps = 0.5**i
         obj.x = x + shifts[0]*eps*h
         fd = weights[0] * obj.J()

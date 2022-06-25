@@ -8,6 +8,12 @@ from simsopt._core.derivative import Derivative, derivative_dec
 def forward_backward(P, L, U, rhs):
     """
     Solve a linear system of the form PLU*adj = rhs
+    t(PLU)adj = rhs
+    Ut * Lt * Pt adj = rhs
+    
+    Ut * y = rhs
+    Lt * z = y
+    Pt * adj = z
     """
     y = scipy.linalg.solve_triangular(U.T, rhs, lower=True) 
     z = scipy.linalg.solve_triangular(L.T, y, lower=False) 
@@ -439,6 +445,13 @@ class BoozerResidual(Optimizable):
         dl[:-2] = self.boozer_surface.label.dJ_by_dsurfacecoefficients()
         Jtil = np.concatenate((J/np.sqrt(num_points), np.sqrt(self.constraint_weight) * dl[None, :]), axis=0)
         dJ_ds = Jtil.T@rtil
+        
+        if booz_surf.res['type'] == 'lscons':
+            if booz_surf.surface.stellsym:
+                dJ_ds = np.concatenate((dJ_ds, [0.]))
+            else:
+                dJ_ds = np.concatenate((dJ_ds, [0., 0.]))
+
         adj = forward_backward(P, L, U, dJ_ds)
         
         adj_times_dg_dcoil = dconstraint_dcoils_vjp(adj, booz_surf, iota, G, booz_surf.bs)
@@ -544,9 +557,16 @@ class NonQuasiAxisymmetricRatio(Optimizable):
 
         dJ_by_dB = self.dJ_by_dB().reshape((-1, 3))
         dJ_by_dcoils = self.biotsavart.B_vjp(dJ_by_dB)
-
+        
         # tack on dJ_diota = dJ_dG = 0 to the end of dJ_ds
         dJ_ds = np.concatenate((self.dJ_by_dsurfacecoefficients(), [0., 0.]))
+        
+        if booz_surf.res['type'] == 'lscons':
+            if booz_surf.surface.stellsym:
+                dJ_ds = np.concatenate((dJ_ds, [0.]))
+            else:
+                dJ_ds = np.concatenate((dJ_ds, [0., 0.]))
+
         adj = forward_backward(P, L, U, dJ_ds)
         
         adj_times_dg_dcoil = dconstraint_dcoils_vjp(adj, booz_surf, iota, G, booz_surf.bs)
@@ -699,6 +719,12 @@ def boozer_surface_dlsqgrad_dcoils_vjp(lm, booz_surf, iota, G, biotsavart):
     G is known for exact boozer surfaces, so if G=None is passed, then that
     value is used instead.
     """
+    
+    if booz_surf.res['type'] == 'lscons':
+        if booz_surf.surface.stellsym:
+            lm = lm[:-1]
+        else:
+            lm = lm[:-2]
 
     #lm_label = lm[-1]
     surface = booz_surf.surface
