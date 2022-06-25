@@ -674,7 +674,17 @@ class Iotas(Optimizable):
 
         # tack on dJ_diota = dJ_dG = 0 to the end of dJ_ds
         dJ_ds = np.zeros(L.shape[0])
-        dJ_ds[-2] = 1.
+        if booz_surf.res['type'] == 'lscons':
+            if booz_surf.surface.stellsym:
+                dJ_ds[-3] = 1
+                #dJ_ds = np.concatenate((dJ_ds, [0.]))
+            else:
+                dJ_ds[-4] = 1
+                #dJ_ds = np.concatenate((dJ_ds, [0., 0.]))
+        else:
+            dJ_ds[-2] = 1.
+
+
         adj = forward_backward(P, L, U, dJ_ds)
 
         adj_times_dg_dcoil = dconstraint_dcoils_vjp(adj, booz_surf, iota, G, booz_surf.bs)
