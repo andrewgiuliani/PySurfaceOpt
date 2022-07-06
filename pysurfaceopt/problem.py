@@ -201,30 +201,15 @@ class SurfaceProblem(Optimizable):
                     #    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'],
                     #            weighting=boozer_surface.res['weighting'])
                     #    res['solver'] = 'NEWTON'                   
+                    
 
-                    
-                    
-                    
                     ## exactly constrained surface
-                    # try linesearch if failed
-                    reg = True
-                    res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', 
-                            hessian=False, weighting=boozer_surface.res['weighting'], reg=reg)
-                    res['solver'] = 'LVM'
-
-                    if not res['success']:
-                        boozer_surface.surface.set_dofs(reference_surface['dofs'])
-                        iota0 = reference_surface['iota']
-                        G0 = reference_surface['G']
-                        
-                        boozer_surface.need_to_run_code = True
-                        res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=3000, constraint_weight=100., iota=iota0, G=G0,  
-                                hessian=False, weighting=boozer_surface.res['weighting'], reg=reg)
-                        res['solver'] = 'BFGS'
+                    res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=2000, constraint_weight=100., iota=iota0, G=G0, hessian=False, weighting=boozer_surface.res['weighting'])
+                    res['solver'] = 'BFGS'
 
                     boozer_surface.need_to_run_code = True
                     res = boozer_surface.minimize_boozer_exact_constraints_newton(tol=1e-13, maxiter=30, iota=res['iota'], G=res['G'],
-                            weighting=boozer_surface.res['weighting'], reg=reg)
+                            weighting=boozer_surface.res['weighting'])
                     res['solver'] = 'NEWTON_cons'
             
             except Exception as e:

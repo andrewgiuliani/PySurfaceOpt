@@ -71,28 +71,6 @@ class Volume:
     def dJ_by_dcoils(self):
         return Derivative()
 
-class Aspect_ratio:
-    """
-    Wrapper class for aspect ratio.
-    """
-
-    def __init__(self, in_surface):
-        phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
-        phis += phis[1]/2
-
-        thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)
-        s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
-        s.set_dofs(in_surface.get_dofs())
-
-        self.in_surface = in_surface
-        self.surface = s
-
-    def J(self):
-        """
-        Compute the volume enclosed by the surface.
-        """
-        self.surface.set_dofs(self.in_surface.get_dofs())
-        return self.surface.aspect_ratio()
 
 class Area:
     """
@@ -116,6 +94,121 @@ class Area:
         """
         self.surface.set_dofs(self.in_surface.get_dofs())
         return self.surface.area()
+
+
+
+class AreaPenalty:
+    """
+    Wrapper class for volume label.
+    """
+
+    def __init__(self, in_surface, w, thres):
+        #phis = np.linspace(0, 1/in_surface.nfp, sDIM, endpoint=False)
+        sDIM = 10
+        phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
+        phis += phis[1]/2
+
+        thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)
+        s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+        s.set_dofs(in_surface.get_dofs())
+
+        self.in_surface = in_surface
+        self.surface = s
+        self.w = w
+        self.thres = thres
+
+    def J(self):
+        """
+        Compute the volume enclosed by the surface.
+        """
+        self.surface.set_dofs(self.in_surface.get_dofs())
+        thres = self.thres
+        A = self.surface.area()
+        w = self.w
+        
+        return 0.5*w*np.max(A - thres,0)**2
+
+    def dJ(self):
+        """
+        Calculate the derivatives with respect to the surface coefficients.
+        """
+        self.surface.set_dofs(self.in_surface.get_dofs())
+        w = self.w
+        thres = self.thres
+        A = self.surface.area()
+        dA = self.surface.darea_by_dcoeff()
+        return w*np.max(A-thres,0)*dA
+
+    def d2J(self):
+        """
+        Calculate the second derivatives with respect to the surface coefficients.
+        """
+        self.surface.set_dofs(self.in_surface.get_dofs())
+        w = self.w
+        thres = self.thres
+        A = self.surface.area()
+        dA = self.surface.darea_by_dcoeff()
+        d2A = self.surface.d2area_by_dcoeffdcoeff()
+        return w * ( np.heaviside(A-thres, 0)*dA[:, None]*dA[None, :] + d2A * np.max(A-thres,0) )
+    
+    def dJ_by_dcoils(self):
+        return Derivative()
+
+class TikhonovPenalty:
+    """
+    Wrapper class for volume label.
+    """
+
+    def __init__(self, s, w):
+        self.surface = s
+        self.ndofs = s.x.size
+        self.w = w
+
+    def J(self):
+        """
+        Compute the volume enclosed by the surface.
+        """
+        return 0.5*self.w*np.sum(self.surface.x**2)
+
+    def dJ(self):
+        """
+        Calculate the derivatives with respect to the surface coefficients.
+        """
+        return self.w*self.surface.x
+
+    def d2J(self):
+        """
+        Calculate the second derivatives with respect to the surface coefficients.
+        """
+        return self.w*np.eye(self.ndofs, self.ndofs)
+    
+    def dJ_by_dcoils(self):
+        return Derivative()
+
+
+
+class Aspect_ratio:
+    """
+    Wrapper class for aspect ratio.
+    """
+
+    def __init__(self, in_surface):
+        phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
+        phis += phis[1]/2
+
+        thetas = np.linspace(0, 1., 2*sDIM, endpoint=False)
+        s = SurfaceXYZTensorFourier(mpol=in_surface.mpol, ntor=in_surface.ntor, stellsym=in_surface.stellsym, nfp=in_surface.nfp, quadpoints_phi=phis, quadpoints_theta=thetas)
+        s.set_dofs(in_surface.get_dofs())
+
+        self.in_surface = in_surface
+        self.surface = s
+
+    def J(self):
+        """
+        Compute the volume enclosed by the surface.
+        """
+        self.surface.set_dofs(self.in_surface.get_dofs())
+        return self.surface.aspect_ratio()
 
 
 
