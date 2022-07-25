@@ -36,7 +36,7 @@ class Volume:
 
     def __init__(self, in_surface):
         #phis = np.linspace(0, 1/in_surface.nfp, sDIM, endpoint=False)
-        sDIM = 10
+        #sDIM = 10
         phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
         phis += phis[1]/2
 
@@ -104,7 +104,7 @@ class AreaPenalty:
 
     def __init__(self, in_surface, w, thres):
         #phis = np.linspace(0, 1/in_surface.nfp, sDIM, endpoint=False)
-        sDIM = 10
+        #sDIM = 10
         phis = np.linspace(0, 1/(2*in_surface.nfp), sDIM, endpoint=False)
         phis += phis[1]/2
 

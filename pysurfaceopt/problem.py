@@ -127,6 +127,7 @@ class SurfaceProblem(Optimizable):
         
         self.res_reference = None
         self.dres_referene = None
+        self.x_reference = None
         self.update(verbose=True)
         
         
@@ -178,39 +179,35 @@ class SurfaceProblem(Optimizable):
                     res = boozer_surface.solve_residual_equation_exactly_newton(tol=1e-13, maxiter=30, iota=iota0, G=G0)
                     res['solver'] = 'NEWTON'
                 else:
-                    ## penalty constrained surfaces
-                    #reg= False
-                    #res = boozer_surface.minimize_boozer_penalty_constraints_ls(tol=1e-13, maxiter=30, constraint_weight=100., iota=iota0, G=G0, method='manual', 
-                    #        hessian=True, weighting=boozer_surface.res['weighting'], reg=reg)
-                    #res['solver'] = 'LVM'
-                    #
-                    ## try linesearch if failed
-                    #if not res['success']:
-                    #    boozer_surface.surface.set_dofs(reference_surface['dofs'])
-                    #    iota0 = reference_surface['iota']
-                    #    G0 = reference_surface['G']
-                    #    
-                    #    boozer_surface.need_to_run_code = True
-                    #    res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=3000, constraint_weight=100., iota=iota0, G=G0,  
-                    #            hessian=True, weighting=boozer_surface.res['weighting'], reg=reg)
-                    #    res['solver'] = 'BFGS'
-                    #
-                    ## if close to minimum, try Newton
-                    #if not res['success'] and np.linalg.norm(res['gradient'], ord=np.inf) < 1.:
-                    #    boozer_surface.need_to_run_code = True
-                    #    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'],
-                    #            weighting=boozer_surface.res['weighting'])
-                    #    res['solver'] = 'NEWTON'                   
+                    if self.x_reference is not None:
+                        dc = 0.1*(self.x-self.x_reference)
+                        boozer_surface.bs.x = self.x_reference
+                        ## linear continuation, hopefully will converge to current branch
+                        dconstraint_dcoils_vjp = boozer_surface_dexactresidual_dcoils_dcurrents_vjp if boozer_surface.res['type'] == 'exact' else boozer_surface_dlsqgrad_dcoils_vjp
+                        P, L, U = boozer_surface.res['PLU']
+                        H = P@L@U
+                        Hinv = np.linalg.inv(H)
+                        Hinv_times_dg_dcoil = np.zeros((H.shape[0], self.x.size))
+                        for i in range(H.shape[0]):
+                            Hinv_times_dg_dcoil[i, :] = dconstraint_dcoils_vjp(Hinv[i, :], boozer_surface, boozer_surface.res['iota'], boozer_surface.res['G'], boozer_surface.bs)(self)
+                        ds = -Hinv_times_dg_dcoil @ dc
+                        
+                        boozer_surface.surface.set_dofs(reference_surface['dofs']+ds[:-2])
+                        iota0 = reference_surface['iota'] + ds[-2]
+                        G0 = reference_surface['G'] + ds[-1]
+                        boozer_surface.bs.x = self.x_reference + dc
+                        import ipdb;ipdb.set_trace()
                     
-
-                    ## exactly constrained surface
-                    res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=2000, constraint_weight=100., iota=iota0, G=G0, hessian=False, weighting=boozer_surface.res['weighting'])
+                    ## penalty constrained surfaces
+                    res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=4000, constraint_weight=100., iota=iota0, G=G0, hessian=False, weighting=boozer_surface.res['weighting'])
                     res['solver'] = 'BFGS'
-
+                    
                     boozer_surface.need_to_run_code = True
-                    res = boozer_surface.minimize_boozer_exact_constraints_newton(tol=1e-13, maxiter=30, iota=res['iota'], G=res['G'],
-                            weighting=boozer_surface.res['weighting'])
-                    res['solver'] = 'NEWTON_cons'
+                    res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'], weighting=boozer_surface.res['weighting'])
+                    res['solver'] = 'NEWTON'                   
+
+
+
             
             except Exception as e:
                 print(self.rank, e)
