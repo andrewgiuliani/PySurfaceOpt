@@ -128,6 +128,7 @@ class SurfaceProblem(Optimizable):
         self.res_reference = None
         self.dres_referene = None
         self.x_reference = None
+        self.continuation_cache = []
         self.update(verbose=True)
         
         
@@ -168,9 +169,68 @@ class SurfaceProblem(Optimizable):
             out_targets.write("distance weight " + str(self.distance_weight)+"\n")
             out_targets.close()
     
+    def initialize_cache(self, boozer_surface, x_old, x_new):
+        N_cont = 5
+        
+        print(f"Continuation on rank {self.rank}")
+
+        interp = np.linspace(0, 1, N_cont, endpoint=True).tolist()
+        x_continuation = np.zeros((N_cont, x_old.size))
+        s_continuation = np.zeros((N_cont, boozer_surface.surface.x.size+2))
+        idx = 0
+
+        s_prev = boozer_surface.surface.x.copy() 
+        iota_prev=boozer_surface.res['iota']
+        G_prev=boozer_surface.res['G']
+
+        for alpha in interp:
+            self.x = alpha*x_new + (1-alpha)*x_old
+            boozer_surface.need_to_run_code = True
+           
+            try: 
+                boozer_surface.surface.x = s_prev
+                boozer_surface.need_to_run_code = True
+                res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-9, maxiter=4000, constraint_weight=100., 
+                                                                              iota=iota_prev, G=G_prev, hessian=False, 
+                                                                              weighting=boozer_surface.res['weighting'])
+                res['solver'] = 'BFGS'
+            except:
+                boozer_surface.res['success']=False
+        
+            s_prev = boozer_surface.surface.x.copy() 
+            iota_prev=res['iota']
+            G_prev=res['G']
+
+            x_continuation[idx, :] = self.x
+            s_continuation[idx, :-2] = boozer_surface.surface.x
+            s_continuation[idx, -2] = res['iota']
+            s_continuation[idx, -1] = res['G']
+            idx+=1
+
+            print(f"rank={self.rank}, alpha={alpha}, solver={res['solver']}, success={res['success']}, iter={res['iter']}")
+        
+        return [x_continuation, s_continuation]
+
+
     def update(self, verbose=False):
+        
+        #if len(self.continuation_cache) == 0 and  \
+        #   self.x_reference is not None and \
+        #   np.linalg.norm(self.x_reference - self.x) > 0:
+        #    for reference_surface, boozer_surface in zip(self.boozer_surface_reference, self.boozer_surface_list):
+        #        
+        #        boozer_surface.surface.set_dofs(reference_surface['dofs'])
+        #        boozer_surface.res['iota'] = reference_surface['iota']
+        #        boozer_surface.res['G']    = reference_surface['G']
+        #        
+        #        x_old = self.x_reference.copy()
+        #        x_new = self.x.copy()
+        #        
+        #        cache = self.initialize_cache(boozer_surface, x_old, x_new)
+        #        self.continuation_cache.append(cache)
+        
         # compute surfaces
-        for reference_surface, boozer_surface in zip(self.boozer_surface_reference, self.boozer_surface_list):
+        for idx, (reference_surface, boozer_surface) in enumerate(zip(self.boozer_surface_reference, self.boozer_surface_list)):
             boozer_surface.surface.set_dofs(reference_surface['dofs'])
             iota0 = reference_surface['iota']
             G0 = reference_surface['G']
@@ -179,36 +239,70 @@ class SurfaceProblem(Optimizable):
                     res = boozer_surface.solve_residual_equation_exactly_newton(tol=1e-13, maxiter=30, iota=iota0, G=G0)
                     res['solver'] = 'NEWTON'
                 else:
-                    if self.x_reference is not None:
-                        dc = 0.1*(self.x-self.x_reference)
-                        boozer_surface.bs.x = self.x_reference
-                        ## linear continuation, hopefully will converge to current branch
-                        dconstraint_dcoils_vjp = boozer_surface_dexactresidual_dcoils_dcurrents_vjp if boozer_surface.res['type'] == 'exact' else boozer_surface_dlsqgrad_dcoils_vjp
-                        P, L, U = boozer_surface.res['PLU']
-                        H = P@L@U
-                        Hinv = np.linalg.inv(H)
-                        Hinv_times_dg_dcoil = np.zeros((H.shape[0], self.x.size))
-                        for i in range(H.shape[0]):
-                            Hinv_times_dg_dcoil[i, :] = dconstraint_dcoils_vjp(Hinv[i, :], boozer_surface, boozer_surface.res['iota'], boozer_surface.res['G'], boozer_surface.bs)(self)
-                        ds = -Hinv_times_dg_dcoil @ dc
-                        
-                        boozer_surface.surface.set_dofs(reference_surface['dofs']+ds[:-2])
-                        iota0 = reference_surface['iota'] + ds[-2]
-                        G0 = reference_surface['G'] + ds[-1]
-                        boozer_surface.bs.x = self.x_reference + dc
-                        import ipdb;ipdb.set_trace()
+                    #if len(self.continuation_cache) > 0:
+                    #    # continuation cache is now initialized, find closest point
+                    #    x_cont = self.continuation_cache[idx][0]
+                    #    s_cont = self.continuation_cache[idx][1]
+
+                    #    dist = np.linalg.norm(x_cont - self.x[None, :], axis=1)
+                    #    idx_min = np.argmin(dist)
+
+                    #    boozer_surface.surface.set_dofs(s_cont[idx_min, :-2])
+                    #    iota0 = s_cont[idx_min, -2]
+                    #    G0 = s_cont[idx_min, -1]
+                    #    
+                    #    print(f"rank={self.rank}, closest surface is {idx_min}")
                     
-                    ## penalty constrained surfaces
+                    ## penalty constrained surface
                     res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=4000, constraint_weight=100., iota=iota0, G=G0, hessian=False, weighting=boozer_surface.res['weighting'])
                     res['solver'] = 'BFGS'
                     
                     boozer_surface.need_to_run_code = True
                     res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'], weighting=boozer_surface.res['weighting'])
                     res['solver'] = 'NEWTON'                   
+                    
+                    ## exactly constrained surface
+                    #res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=4000, constraint_weight=1e4, iota=iota0, G=G0, hessian=False, weighting=boozer_surface.res['weighting'])
+                    #res['solver'] = 'BFGS'
+
+                    #boozer_surface.need_to_run_code = True
+                    #res = boozer_surface.minimize_boozer_exact_constraints_newton(tol=1e-13, maxiter=30, iota=res['iota'], G=res['G'], weighting=boozer_surface.res['weighting'])
+                    #res['solver'] = 'NEWTON_cons'
+
+
+                    # append to cache
+                    #if len(self.continuation_cache) > 0 and res['success'] and dist[idx_min] > 0:
+                    #    x_new = self.x
+                    #    s_new = np.concatenate([boozer_surface.surface.x, [res['iota'], res['G']]])
+                    #    x_cont = self.continuation_cache[idx][0]
+                    #    s_cont = self.continuation_cache[idx][1]
+                    #    self.continuation_cache[idx][0] = np.concatenate((x_cont, x_new[None, :]), axis=0)
+                    #    self.continuation_cache[idx][1] = np.concatenate((s_cont, s_new[None, :]), axis=0)
 
 
 
-            
+
+
+
+
+
+                    ## penalty constrained surface
+                    #res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=4000, constraint_weight=100., iota=iota0, G=G0, hessian=False, weighting=boozer_surface.res['weighting'])
+                    #res['solver'] = 'BFGS'
+                    #
+                    #boozer_surface.need_to_run_code = True
+                    #res = boozer_surface.minimize_boozer_penalty_constraints_newton(tol=1e-13, maxiter=40, constraint_weight=100., iota=res['iota'], G=res['G'], weighting=boozer_surface.res['weighting'])
+                    #res['solver'] = 'NEWTON'                   
+ 
+
+                    ## exactly constrained surface
+                    #res = boozer_surface.minimize_boozer_penalty_constraints_BFGS(tol=1e-13, maxiter=4000, constraint_weight=1e4, iota=iota0, G=G0, hessian=False, weighting=boozer_surface.res['weighting'])
+                    #res['solver'] = 'BFGS'
+
+                    #boozer_surface.need_to_run_code = True
+                    #res = boozer_surface.minimize_boozer_exact_constraints_newton(tol=1e-13, maxiter=30, iota=res['iota'], G=res['G'], weighting=boozer_surface.res['weighting'])
+                    #res['solver'] = 'NEWTON_cons'
+
             except Exception as e:
                 print(self.rank, e)
                 boozer_surface.res['success']=False
@@ -266,6 +360,10 @@ class SurfaceProblem(Optimizable):
                 res['labelerr'] = bs.res['labelerr']
             if 'firstorderop' in bs.res:
                 res['firstorderop'] = bs.res['firstorderop']
+            if 'reg' in bs.res:
+                res['reg'] = bs.res['reg']
+            if 'cond' in bs.res:
+                res['cond'] = bs.res['cond']
 
         if verbose: 
             res_list = [r for rlist in MPI.COMM_WORLD.allgather(res_list) for r in rlist]
@@ -274,7 +372,7 @@ class SurfaceProblem(Optimizable):
                     if res['type'] == 'exact':
                         print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_inf={np.linalg.norm(res['residual'], ord=np.inf):.3e} ")
                     else:
-                        print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, ||residual||_2={np.linalg.norm(res['residual']):.3e}, ||grad||_inf = {np.linalg.norm(res['firstorderop'], ord=np.inf):.3e}, rel. label error: {res['labelerr']}")
+                        print(f"{res['success']} - {res['solver']}     iter={res['iter']}, iota={res['iota']:.16f}, obj={res['residual']:.3e}, reg={res['reg']:.3e}, ||grad||_inf = {np.linalg.norm(res['firstorderop'], ord=np.inf):.3e}, rel. label error: {res['labelerr']}, cond={res['cond']:.3e}")
                 print("--------------------------------------------------------------------------------")
         
         if False in success_list:
@@ -393,8 +491,12 @@ class SurfaceProblem(Optimizable):
         
         self.res_dict=res_dict
         self.dres_dict=dres_dict
+    
 
     def callback(self, x):
+        self.callback_pylbfgs(x, None, None, None, None, None, None, None)
+
+    def callback_pylbfgs(self, x, g, fx, xnorm, gnorm, step, iteration, num_eval, *args):
         assert np.allclose(self.x, x, rtol=0, atol=0)
         
         # check self.x is the same at all ranks
@@ -410,17 +512,17 @@ class SurfaceProblem(Optimizable):
         self.x_reference = x.copy()
         self.res_reference = self.res
         self.dres_reference = self.dres.copy()
-
+        
+        self.continuation_cache = []
 
         self.iter+=1
 
-        xs_list = [bs.surface.cross_section(0., thetas=np.linspace(0, 1, 100, endpoint=False)) for bs in self.boozer_surface_list]
+        xs_list = [bs.surface.cross_section(0., thetas=500) for bs in self.boozer_surface_list]
         si_list = [is_self_intersecting(xs) for xs in xs_list]
         all_si_list = [bval for s_list in MPI.COMM_WORLD.allgather(si_list) for bval in s_list]
         if self.rank==0:
-            if True in all_si_list:
-                bool_string = " ".join(['True' if b else 'False' for b in all_si_list])
-                print("Self-intersections " + bool_string)
+            bool_string = " ".join(['True' if b else 'False' for b in all_si_list])
+            print("Self-intersections " + bool_string)
 
         def compute_non_quasisymmetry_L2(in_surface):
             bs = BiotSavart(self.coils)
@@ -518,6 +620,8 @@ class SurfaceProblem(Optimizable):
             print("################################################################################")
             if self.output:
                 np.savetxt(self.outdir + f"x_{self.iter}.txt", self.x.reshape((1,-1)))
+        
+        MPI.COMM_WORLD.barrier()
 
     def recompute_bell(self, parent=None):
         self.res=None
@@ -529,8 +633,19 @@ class SurfaceProblem(Optimizable):
         if self.res is None:
             self.update(verbose=verbose)
 
+        bs = self.boozer_surface_list[0]
+        sdofs = bs.surface.x.copy()
+
+        if bs.res['success']:
+            iotaG = [bs.res['iota'], bs.res['G']]
+        else:
+            iotaG = [-1,-1]
+
+        all_sdofs = MPI.COMM_WORLD.allgather(sdofs.tolist() + iotaG)
+
         if self.rank == 0:
             np.savetxt(self.outdir+f"fval_{self.iter}_{time.time()}.txt", [np.linalg.norm(self.x-self.x_reference), self.res])
+            np.savetxt(self.outdir+f"sdofs_{self.iter}_{time.time()}.txt", np.array(all_sdofs))
 
         return self.res
     def dJ(self, verbose=False):
