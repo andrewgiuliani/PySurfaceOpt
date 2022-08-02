@@ -5,9 +5,10 @@ from simsopt.field.coil import ScaledCurrent, Current, coils_via_symmetries
 from simsopt.field.biotsavart import BiotSavart
 from simsopt.geo.curvexyzfourier import CurveXYZFourier
 from simsopt.geo.curverzfourier import CurveRZFourier
+from simsopt.geo.surfaceobjectives import Volume
 from simsopt.geo.boozersurface import BoozerSurface, boozer_surface_residual
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
-from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, Volume
+from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius
 from ground.base import get_context
 from bentley_ottmann.planar import contour_self_intersects
 
