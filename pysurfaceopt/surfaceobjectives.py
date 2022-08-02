@@ -1,5 +1,6 @@
 import numpy as np
 import scipy
+from simsopt.geo.surfaceobjectives import Volume
 from simsopt.geo.boozersurface import boozer_surface_residual
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
 from simsopt._core.graph_optimizable import Optimizable

@@ -8,7 +8,7 @@ from simsopt.field.biotsavart import BiotSavart
 from simsopt.geo.surfacexyztensorfourier import SurfaceXYZTensorFourier
 from pysurfaceopt.helpers import is_self_intersecting
 from pysurfaceopt.curveobjectives import MeanSquareCurvature
-from simsopt.geo.surfaceobjectives import Volume
+from simsopt.geo.surfaceobjectives import Volume, Area
 from pysurfaceopt.surfaceobjectives import ToroidalFlux, MajorRadius, BoozerResidual, NonQuasiAxisymmetricRatio, Iotas, Aspect_ratio
 from pysurfaceopt.surfaceobjectives import boozer_surface_dlsqgrad_dcoils_vjp
 from pysurfaceopt.surfaceobjectives import boozer_surface_dexactresidual_dcoils_dcurrents_vjp
