@@ -27,8 +27,6 @@ def forward_backward(P, L, U, rhs):
  
     return adj
 
-
-
 class AreaPenalty:
     """
     Wrapper class for volume label.
@@ -47,7 +45,7 @@ class AreaPenalty:
         A = self.surface.area()
         w = self.w
         
-        return 0.5*w*np.max(A - thres,0)**2
+        return 0.5*w*(A - thres)**2
 
     def dJ(self):
         """
@@ -57,7 +55,7 @@ class AreaPenalty:
         thres = self.thres
         A = self.surface.area()
         dA = self.surface.darea_by_dcoeff()
-        return w*np.max(A-thres,0)*dA
+        return w*(A-thres)*dA
 
     def d2J(self):
         """
@@ -68,10 +66,121 @@ class AreaPenalty:
         A = self.surface.area()
         dA = self.surface.darea_by_dcoeff()
         d2A = self.surface.d2area_by_dcoeffdcoeff()
-        return w * ( np.heaviside(A-thres, 0)*dA[:, None]*dA[None, :] + d2A * np.max(A-thres,0) )
+        return w * ( dA[:, None]*dA[None, :] + d2A * (A-thres) )
     
     def dJ_by_dcoils(self):
         return Derivative()
+
+
+
+class AreaPenalty3:
+    """
+    Wrapper class for volume label.
+    """
+
+    def __init__(self, in_surface, w, thres):
+        self.surface = in_surface
+        self.w = w
+        self.thres = thres
+
+    def J(self):
+        """
+        Compute the volume enclosed by the surface.
+        """
+        thres = self.thres
+        A = self.surface.area()
+        w = self.w
+        
+        return 0.5*w*np.maximum(A - thres,0)**2
+
+    def dJ(self):
+        """
+        Calculate the derivatives with respect to the surface coefficients.
+        """
+        w = self.w
+        thres = self.thres
+        A = self.surface.area()
+        dA = self.surface.darea_by_dcoeff()
+        return w*np.maximum(A-thres,0)*dA
+
+    def d2J(self):
+        """
+        Calculate the second derivatives with respect to the surface coefficients.
+        """
+        w = self.w
+        thres = self.thres
+        A = self.surface.area()
+        dA = self.surface.darea_by_dcoeff()
+        d2A = self.surface.d2area_by_dcoeffdcoeff()
+        return w * ( np.heaviside(A-thres, 0)*dA[:, None]*dA[None, :] + d2A * np.maximum(A-thres,0) )
+    
+    def dJ_by_dcoils(self):
+        return Derivative()
+
+
+class AreaPenalty2:
+    """
+    Wrapper class for volume label.
+    """
+
+    def __init__(self, in_surface, w, thres, p=2):
+        assert p>=1
+        self.surface = in_surface
+        self.w = w
+        self.thres = thres
+        self.p = p
+
+    def J(self):
+        """
+        Compute the volume enclosed by the surface.
+        """
+        p = self.p
+        thres = self.thres
+        A = self.surface.area()
+        w = self.w
+        diff = A - thres
+        if diff > 0:
+            return (1/p)*w*diff**p
+        else:
+            return 0.
+
+    def dJ(self):
+        """
+        Calculate the derivatives with respect to the surface coefficients.
+        """
+        p = self.p
+        w = self.w
+        thres = self.thres
+        A = self.surface.area()
+        dA = self.surface.darea_by_dcoeff()
+        diff = A - thres
+        
+        if diff > 0: 
+            return w*(diff**(p-1))*dA
+        else:
+            return np.zeros(dA.shape)
+
+    def d2J(self):
+        """
+        Calculate the second derivatives with respect to the surface coefficients.
+        """
+        p = self.p
+        w = self.w
+        thres = self.thres
+        A = self.surface.area()
+        dA = self.surface.darea_by_dcoeff()
+        d2A = self.surface.d2area_by_dcoeffdcoeff()
+        diff = A - thres
+        
+        if diff > 0:
+            return w * ( (p-1) * diff**(p-2) * dA[:, None]*dA[None, :] + d2A * diff**(p-1) )
+        else:
+            return np.zeros(d2A.shape)
+
+
+    def dJ_by_dcoils(self):
+        return Derivative()
+
 
 class TikhonovPenalty:
     """
@@ -433,10 +542,11 @@ class BoozerResidual(Optimizable):
         nphi = self.surface.quadpoints_phi.size
         ntheta = self.surface.quadpoints_theta.size
         num_points = 3 * nphi * ntheta
-        if self.boozer_surface.res['type'] == 'exact':
-            w = None
-        else:
-            w = self.boozer_surface.res['weighting']
+        #if self.boozer_surface.res['type'] == 'exact':
+        #    w = None
+        #else:
+        #    w = self.boozer_surface.res['weighting']
+        w = "1/B"
 
         # compute J
         surface = self.surface
@@ -479,10 +589,11 @@ class BoozerResidual(Optimizable):
         nphi = self.surface.quadpoints_phi.size
         ntheta = self.surface.quadpoints_theta.size
         num_points = 3 * nphi * ntheta
-        if self.boozer_surface.res['type'] == 'exact':
-            w = None
-        else:
-            w = self.boozer_surface.res['weighting']
+        w = "1/B"
+        #if self.boozer_surface.res['type'] == 'exact':
+        #    w = None
+        #else:
+        #    w = self.boozer_surface.res['weighting']
 
         r, r_dB = boozer_surface_residual_dB(surface, self.boozer_surface.res['iota'], self.boozer_surface.res['G'], self.biotsavart, derivatives=0, weighting=w)
 
@@ -728,8 +839,9 @@ def boozer_surface_dexactresidual_dcoils_dcurrents_vjp(lm, booz_surf, iota, G, b
    
     lm_times_dres_dB = np.sum(lm_cons[:, :, None] * dres_dB, axis=1).reshape((-1, 3))
     lm_times_dres_dcoils = biotsavart.B_vjp(lm_times_dres_dB)
-    lm_times_dlabel_dcoils = lm_label*booz_surf.label.dJ_by_dcoils()
-    return lm_times_dres_dcoils+lm_times_dlabel_dcoils
+    #lm_times_dlabel_dcoils = lm_label*booz_surf.label.dJ_by_dcoils()
+    #return lm_times_dres_dcoils+lm_times_dlabel_dcoils
+    return lm_times_dres_dcoils
 
 
 def boozer_surface_dlsqgrad_dcoils_vjp(lm, booz_surf, iota, G, biotsavart):
@@ -811,6 +923,8 @@ def boozer_surface_residual_dB(surface, iota, G, biotsavart, derivatives=0, weig
 
     GI = np.eye(3, 3) * G
     dresidual_dB = GI[None, None, :, :] - 2. * tang[:, :, :, None] * B[:, :, None, :]
+    
+    print("THE WEIGHTING IS ", weighting)
 
     if weighting == '1/B':
         B2 = np.sum(B**2, axis=2)
